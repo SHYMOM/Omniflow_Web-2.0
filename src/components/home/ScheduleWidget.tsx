@@ -74,26 +74,34 @@ export default function ScheduleWidget() {
             </div>
           ))
         ) : scheduleItems && scheduleItems.length > 0 ? (
-          scheduleItems.slice(0, 20).map((item) => (
-            <Link
-              key={item.mal_id}
-              href={`/anime/${item.mal_id}`}
-              className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-surface-hover transition-colors group"
-            >
-              <span className="text-text-muted text-[13px] w-[45px] shrink-0 flex items-center gap-1">
-                <Clock size={10} />
-                {item.broadcast?.time || '??:??'}
-              </span>
-              <span className="text-[13px] text-white flex-1 line-clamp-1 group-hover:text-accent-green transition-colors">
-                {item.title}
-              </span>
-              {item.episodes && (
-                <span className="text-[12px] text-text-secondary bg-void px-1.5 py-0.5 rounded shrink-0">
-                  Ep {item.episodes}
-                </span>
-              )}
-            </Link>
-          ))
+          (() => {
+            const seen = new Set();
+            return scheduleItems.slice(0, 20).map((item) => {
+              if (seen.has(item.mal_id)) return null;
+              seen.add(item.mal_id);
+              
+              return (
+                <Link
+                  key={item.mal_id}
+                  href={`/anime/mal-${item.mal_id}`} // Use mal- prefix for Jikan/MAL IDs
+                  className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-surface-hover transition-colors group"
+                >
+                  <span className="text-text-muted text-[13px] w-[45px] shrink-0 flex items-center gap-1">
+                    <Clock size={10} />
+                    {item.broadcast?.time || '??:??'}
+                  </span>
+                  <span className="text-[13px] text-white flex-1 line-clamp-1 group-hover:text-accent-green transition-colors">
+                    {item.title}
+                  </span>
+                  {item.episodes && (
+                    <span className="text-[12px] text-text-secondary bg-void px-1.5 py-0.5 rounded shrink-0">
+                      Ep {item.episodes}
+                    </span>
+                  )}
+                </Link>
+              );
+            });
+          })()
         ) : (
           <p className="text-text-muted text-sm text-center py-4">No shows scheduled</p>
         )}

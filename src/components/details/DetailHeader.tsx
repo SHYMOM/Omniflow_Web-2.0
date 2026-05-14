@@ -9,9 +9,11 @@ import TypeBadge from '@/components/media/TypeBadge';
 import { formatMediaType, formatSeason, formatCountdown } from '@/lib/utils/formatters';
 import { useUserStore } from '@/store/userStore';
 import { cn } from '@/lib/utils/cn';
+import type { MediaItem } from '@/types/media';
+import { mapAniListToMediaItem } from '@/lib/api/hybrid';
 
 interface DetailHeaderProps {
-  media: AniListMedia;
+  media: AniListMedia | MediaItem;
   mediaType: 'anime' | 'movie' | 'tv' | 'manga';
 }
 
@@ -19,29 +21,29 @@ export default function DetailHeader({ media, mediaType }: DetailHeaderProps) {
   const router = useRouter();
   const { addToWatchlist, removeFromWatchlist, isInWatchlist } = useUserStore();
 
-  const title = media.title.english || media.title.romaji;
-  const bannerUrl = media.bannerImage || media.coverImage?.extraLarge || '';
-  const posterUrl = media.coverImage?.extraLarge || media.coverImage?.large || '';
-  const formatLabel = formatMediaType(media.format || '');
-  const seasonLabel = formatSeason(media.season, media.seasonYear);
-  const isAiring = media.status === 'RELEASING';
-  const mediaId = `anilist-${media.id}`;
+  const item: MediaItem = typeof media.id === 'string' ? media as MediaItem : mapAniListToMediaItem(media as AniListMedia);
+
+  const title = item.title;
+  const bannerUrl = item.bannerUrl || item.posterUrl || '';
+  const posterUrl = item.posterUrl || '';
+  const formatLabel = item.formatLabel;
+  const seasonLabel = formatSeason(item.season as any, item.seasonYear);
+  const isAiring = item.status === 'RELEASING';
+  const mediaId = item.id;
   const inWatchlist = isInWatchlist(mediaId);
 
-  const watchHref = mediaType === 'manga' ? `/read/${media.id}/1` : `/watch?id=${media.id}&type=${mediaType}&ep=1`;
+  const watchHref = mediaType === 'manga' ? `/read/${item.id}/1` : `/watch?id=${item.id}&type=${mediaType}&ep=1`;
 
   const handleWatchlist = () => {
     if (inWatchlist) {
       removeFromWatchlist(mediaId);
     } else {
       addToWatchlist({
-        mediaId, mediaType, title, posterUrl,
-        score: (media.averageScore || 0) / 10,
-        format: media.format || '', formatLabel,
-        year: media.seasonYear || media.startDate?.year || 0,
-        status: media.status || '', addedAt: new Date().toISOString(),
-        anilistId: media.id, malId: media.idMal || undefined,
-      });
+        ...item,
+        addedAt: new Date().toISOString(),
+        mediaId: item.id,
+        mediaType,
+      } as any);
     }
   };
 
@@ -87,32 +89,28 @@ export default function DetailHeader({ media, mediaType }: DetailHeaderProps) {
               <button onClick={() => navigator.clipboard.writeText(window.location.href)} className="p-2 rounded-lg bg-surface border border-border text-text-secondary hover:text-white">
                 <Share2 size={18} />
               </button>
-              {media.idMal && (
-                <a href={`https://myanimelist.net/anime/${media.idMal}`} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-[#2e51a2] text-white text-xs font-bold flex items-center gap-1">
-                  MAL <ExternalLink size={12} />
+              {item.malId && (
+                <a href={`https://myanimelist.net/anime/${item.malId}`} target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-full bg-[#2e51a2] text-white text-[10px] font-bold flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm" title="View on MyAnimeList">
+                  MAL
                 </a>
               )}
-              <a href={`https://anilist.co/anime/${media.id}`} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-[#02a9ff] text-white text-xs font-bold flex items-center gap-1">
-                AL <ExternalLink size={12} />
-              </a>
+              {item.anilistId && (
+                <a href={`https://anilist.co/anime/${item.anilistId}`} target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-full bg-[#02a9ff] text-white text-[11px] font-bold flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm" title="View on AniList">
+                  A.
+                </a>
+              )}
             </div>
           </div>
         </div>
 
         {/* Next episode notice */}
-        {media.nextAiringEpisode && (
+        {item.nextAiringEpisode && (
           <div className="mt-4 py-3 px-4 bg-surface border border-border rounded-lg text-center text-sm">
             🔔 <span className="text-text-secondary">Next ep airing</span>{' '}
-            <span className="text-accent-green font-medium">in {formatCountdown(media.nextAiringEpisode.airingAt)}</span>
+            <span className="text-accent-green font-medium">in {formatCountdown(item.nextAiringEpisode.airingAt)}</span>
           </div>
         )}
 
-        {/* Description */}
-        {media.description && (
-          <p className="mt-4 text-sm text-text-secondary leading-relaxed max-w-3xl">
-            {media.description.replace(/<[^>]*>/g, '')}
-          </p>
-        )}
       </div>
     </div>
   );

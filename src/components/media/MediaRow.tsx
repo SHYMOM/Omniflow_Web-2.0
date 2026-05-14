@@ -3,12 +3,13 @@
 import { useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AniListMedia } from '@/types/anilist';
+import type { MediaItem } from '@/types/media';
 import MediaCard from './MediaCard';
 import SkeletonCard from './SkeletonCard';
 import { cn } from '@/lib/utils/cn';
 
 interface MediaRowProps {
-  items: AniListMedia[];
+  items: (AniListMedia | MediaItem)[];
   loading?: boolean;
   skeletonCount?: number;
   className?: string;
@@ -61,11 +62,19 @@ export default function MediaRow({
         ref={scrollRef}
         className="flex gap-3 overflow-x-auto hide-scrollbar scroll-smooth pb-2"
       >
-        {items.map((media) => (
-          <div key={media.id} className="w-[150px] shrink-0">
-            <MediaCard media={media} showHoverCard={showHoverCard} />
-          </div>
-        ))}
+        {(() => {
+          const seen = new Set();
+          return items.map((media) => {
+            const id = typeof media.id === 'string' ? media.id : `anilist-${media.id}`;
+            if (seen.has(id)) return null;
+            seen.add(id);
+            return (
+              <div key={id} className="w-[150px] shrink-0">
+                <MediaCard media={media} showHoverCard={showHoverCard} />
+              </div>
+            );
+          });
+        })()}
       </div>
 
       {/* Scroll right button */}

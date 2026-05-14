@@ -12,10 +12,10 @@ async function queryAniList<T>(query: string, variables: Record<string, unknown>
 }
 
 // ─── Trending ────────────────────────────────────────────────
-export async function getTrendingAnime(perPage = 8): Promise<AniListMedia[]> {
+export async function getTrendingAnime(perPage = 8, page = 1): Promise<AniListMedia[]> {
   const query = `
-    query ($perPage: Int) {
-      Page(perPage: $perPage) {
+    query ($perPage: Int, $page: Int) {
+      Page(perPage: $perPage, page: $page) {
         media(type: ANIME, sort: TRENDING_DESC) {
           id idMal title { romaji english native }
           description(asHtml: false)
@@ -28,12 +28,12 @@ export async function getTrendingAnime(perPage = 8): Promise<AniListMedia[]> {
         }
       }
     }`;
-  const res = await queryAniList<AniListPageResponse>(query, { perPage });
+  const res = await queryAniList<AniListPageResponse>(query, { perPage, page });
   return res.data.Page.media;
 }
 
 // ─── This Season ─────────────────────────────────────────────
-export async function getThisSeasonAnime(perPage = 18): Promise<AniListMedia[]> {
+export async function getThisSeasonAnime(perPage = 18, page = 1): Promise<AniListMedia[]> {
   const now = new Date();
   const month = now.getMonth();
   const seasons = ['WINTER', 'WINTER', 'WINTER', 'SPRING', 'SPRING', 'SPRING', 'SUMMER', 'SUMMER', 'SUMMER', 'FALL', 'FALL', 'FALL'];
@@ -41,8 +41,8 @@ export async function getThisSeasonAnime(perPage = 18): Promise<AniListMedia[]> 
   const year = now.getFullYear();
 
   const query = `
-    query ($season: MediaSeason, $seasonYear: Int, $perPage: Int) {
-      Page(perPage: $perPage) {
+    query ($season: MediaSeason, $seasonYear: Int, $perPage: Int, $page: Int) {
+      Page(perPage: $perPage, page: $page) {
         media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC) {
           id idMal title { romaji english native }
           coverImage { extraLarge large }
@@ -50,15 +50,15 @@ export async function getThisSeasonAnime(perPage = 18): Promise<AniListMedia[]> 
         }
       }
     }`;
-  const res = await queryAniList<AniListPageResponse>(query, { season, seasonYear: year, perPage });
+  const res = await queryAniList<AniListPageResponse>(query, { season, seasonYear: year, perPage, page });
   return res.data.Page.media;
 }
 
 // ─── All Time Popular ────────────────────────────────────────
-export async function getPopularAnime(perPage = 18): Promise<AniListMedia[]> {
+export async function getPopularAnime(perPage = 18, page = 1): Promise<AniListMedia[]> {
   const query = `
-    query ($perPage: Int) {
-      Page(perPage: $perPage) {
+    query ($perPage: Int, $page: Int) {
+      Page(perPage: $perPage, page: $page) {
         media(type: ANIME, sort: POPULARITY_DESC) {
           id idMal title { romaji english native }
           coverImage { extraLarge large }
@@ -66,15 +66,15 @@ export async function getPopularAnime(perPage = 18): Promise<AniListMedia[]> {
         }
       }
     }`;
-  const res = await queryAniList<AniListPageResponse>(query, { perPage });
+  const res = await queryAniList<AniListPageResponse>(query, { perPage, page });
   return res.data.Page.media;
 }
 
 // ─── Top Rated ───────────────────────────────────────────────
-export async function getTopRatedAnime(perPage = 18): Promise<AniListMedia[]> {
+export async function getTopRatedAnime(perPage = 18, page = 1): Promise<AniListMedia[]> {
   const query = `
-    query ($perPage: Int) {
-      Page(perPage: $perPage) {
+    query ($perPage: Int, $page: Int) {
+      Page(perPage: $perPage, page: $page) {
         media(type: ANIME, sort: SCORE_DESC) {
           id idMal title { romaji english native }
           coverImage { extraLarge large }
@@ -82,15 +82,15 @@ export async function getTopRatedAnime(perPage = 18): Promise<AniListMedia[]> {
         }
       }
     }`;
-  const res = await queryAniList<AniListPageResponse>(query, { perPage });
+  const res = await queryAniList<AniListPageResponse>(query, { perPage, page });
   return res.data.Page.media;
 }
 
 // ─── Upcoming ────────────────────────────────────────────────
-export async function getUpcomingAnime(perPage = 6): Promise<AniListMedia[]> {
+export async function getUpcomingAnime(perPage = 6, page = 1): Promise<AniListMedia[]> {
   const query = `
-    query ($perPage: Int) {
-      Page(perPage: $perPage) {
+    query ($perPage: Int, $page: Int) {
+      Page(perPage: $perPage, page: $page) {
         media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC) {
           id idMal title { romaji english native }
           coverImage { extraLarge large } description(asHtml: false)
@@ -100,15 +100,15 @@ export async function getUpcomingAnime(perPage = 6): Promise<AniListMedia[]> {
         }
       }
     }`;
-  const res = await queryAniList<AniListPageResponse>(query, { perPage });
+  const res = await queryAniList<AniListPageResponse>(query, { perPage, page });
   return res.data.Page.media;
 }
 
 // ─── Recently Updated ────────────────────────────────────────
-export async function getRecentlyUpdatedAnime(perPage = 20): Promise<AniListMedia[]> {
+export async function getRecentlyUpdatedAnime(perPage = 20, page = 1): Promise<AniListMedia[]> {
   const query = `
-    query ($perPage: Int) {
-      Page(perPage: $perPage) {
+    query ($perPage: Int, $page: Int) {
+      Page(perPage: $perPage, page: $page) {
         media(type: ANIME, status: RELEASING, sort: UPDATED_AT_DESC) {
           id idMal title { romaji english native }
           coverImage { extraLarge large } bannerImage
@@ -117,7 +117,7 @@ export async function getRecentlyUpdatedAnime(perPage = 20): Promise<AniListMedi
         }
       }
     }`;
-  const res = await queryAniList<AniListPageResponse>(query, { perPage });
+  const res = await queryAniList<AniListPageResponse>(query, { perPage, page });
   return res.data.Page.media;
 }
 
@@ -134,14 +134,14 @@ export async function getAnimeDetail(id: number): Promise<AniListMedia> {
         averageScore meanScore popularity
         genres tags { name rank isMediaSpoiler }
         studios { nodes { id name isAnimationStudio } }
-        characters(sort: ROLE, perPage: 12) {
+        characters(sort: ROLE, perPage: 25) {
           edges {
             role
             node { id name { full } image { large } }
             voiceActors(language: JAPANESE) { id name { full } image { large } languageV2 }
           }
         }
-        staff(perPage: 8) {
+        staff(perPage: 25) {
           edges { role node { id name { full } image { large } } }
         }
         relations {
@@ -161,6 +161,49 @@ export async function getAnimeDetail(id: number): Promise<AniListMedia> {
       }
     }`;
   const res = await queryAniList<AniListSingleResponse>(query, { id });
+  return res.data.Media;
+}
+
+export async function getAnimeByMalId(malId: number): Promise<AniListMedia> {
+  const query = `
+    query ($malId: Int) {
+      Media(idMal: $malId, type: ANIME) {
+        id idMal title { romaji english native }
+        description(asHtml: false)
+        coverImage { extraLarge large } bannerImage
+        trailer { id site }
+        format status season seasonYear episodes duration
+        averageScore meanScore popularity
+        genres tags { name rank isMediaSpoiler }
+        studios { nodes { id name isAnimationStudio } }
+        characters(sort: ROLE, perPage: 25) {
+          edges {
+            role
+            node { id name { full } image { large } }
+            voiceActors(language: JAPANESE) { id name { full } image { large } languageV2 }
+          }
+        }
+        staff(perPage: 25) {
+          edges { role node { id name { full } image { large } } }
+        }
+        relations {
+          edges {
+            relationType
+            node { id title { romaji english } coverImage { large } format type seasonYear status }
+          }
+        }
+        recommendations(perPage: 15) {
+          nodes {
+            mediaRecommendation { id title { romaji english } coverImage { large } format type seasonYear }
+          }
+        }
+        nextAiringEpisode { airingAt episode }
+        source countryOfOrigin synonyms hashtag
+        startDate { year month day } endDate { year month day }
+      }
+    }
+  `;
+  const res = await queryAniList<AniListSingleResponse>(query, { malId });
   return res.data.Media;
 }
 

@@ -1,23 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Home, Search, Calendar, Clock, Film, Tv, Clapperboard, BookOpen, ListVideo, Settings, X } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { cn } from '@/lib/utils/cn';
 
 const mainLinks = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/search', label: 'Discover', icon: Search },
+  { href: '/discover', label: 'Discover', icon: Search },
   { href: '/schedule', label: 'Schedule', icon: Calendar },
   { href: '/history', label: 'Watch History', icon: Clock },
 ];
 
 const categoryLinks = [
-  { href: '/search?type=movie', label: 'Movies', icon: Film },
-  { href: '/search?type=tv', label: 'TV Shows', icon: Tv },
-  { href: '/search?type=anime', label: 'Anime', icon: Clapperboard },
-  { href: '/search?type=manga', label: 'Manga', icon: BookOpen },
+  { href: '/movies', label: 'Movies', icon: Film },
+  { href: '/tv', label: 'TV Shows', icon: Tv },
+  { href: '/anime', label: 'Anime', icon: Clapperboard },
+  { href: '/manga', label: 'Manga', icon: BookOpen },
 ];
 
 const accountLinks = [
@@ -27,8 +27,6 @@ const accountLinks = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const search = searchParams.toString() ? `?${searchParams.toString()}` : '';
   const { sidebarOpen, setSidebarOpen } = useUIStore();
 
   return (
@@ -99,7 +97,7 @@ export default function Sidebar() {
               onClick={() => setSidebarOpen(false)}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all mb-0.5',
-                pathname + search === link.href
+                pathname === link.href
                   ? 'bg-surface text-white font-medium'
                   : 'text-text-secondary hover:bg-surface hover:text-white'
               )}

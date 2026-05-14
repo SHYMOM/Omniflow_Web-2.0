@@ -4,16 +4,16 @@ import type { TMDBMovie, TMDBTVShow, TMDBSeason, TMDBListResponse } from '@/type
 const TMDB_PROXY = '/api/tmdb';
 
 // ─── Trending ────────────────────────────────────────────────
-export async function getTrendingMovies(timeWindow: 'day' | 'week' = 'week'): Promise<TMDBMovie[]> {
+export async function getTrendingMovies(timeWindow: 'day' | 'week' = 'week', page = 1): Promise<TMDBMovie[]> {
   const { data } = await axios.get<TMDBListResponse<TMDBMovie>>(
-    `${TMDB_PROXY}/trending`, { params: { type: 'movie', timeWindow } }
+    `${TMDB_PROXY}/trending`, { params: { type: 'movie', timeWindow, page } }
   );
   return data.results;
 }
 
-export async function getTrendingTV(timeWindow: 'day' | 'week' = 'week'): Promise<TMDBTVShow[]> {
+export async function getTrendingTV(timeWindow: 'day' | 'week' = 'week', page = 1): Promise<TMDBTVShow[]> {
   const { data } = await axios.get<TMDBListResponse<TMDBTVShow>>(
-    `${TMDB_PROXY}/trending`, { params: { type: 'tv', timeWindow } }
+    `${TMDB_PROXY}/trending`, { params: { type: 'tv', timeWindow, page } }
   );
   return data.results;
 }

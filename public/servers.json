@@ -1,68 +1,113 @@
 [
   {
-    "id": "vidsrc-icu",
-    "name": "VidSrc ICU",
-    "baseUrl": "https://vidsrc.icu/embed",
+    "id": "vidfast",
+    "name": "VidFast",
+    "baseUrl": "https://vidfast.pro",
     "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}",
-      "anime_sub": "/anime/{malId}/{episode}/0",
-      "anime_dub": "/anime/{malId}/{episode}/1",
-      "manga": "/manga/{malId}/{chapter}"
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}",
+      "anime_dub": "/embed/anime/{malId}/{episode}"
     },
-    "quality": ["1080p", "720p", "480p"],
+    "quality": ["1080p", "720p"],
     "features": ["sub", "dub"],
     "recommended": true,
     "status": "active"
   },
   {
-    "id": "vidzee",
-    "name": "Vidzee",
-    "baseUrl": "https://player.vidzee.wtf/embed",
+    "id": "vidsrc",
+    "name": "VidSrc",
+    "baseUrl": "https://vidsrc.icu",
     "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}"
-    },
-    "quality": ["1080p", "720p"],
-    "features": ["sub"],
-    "recommended": false,
-    "status": "active"
-  },
-  {
-    "id": "vidsrc-pro",
-    "name": "VidSrc Pro",
-    "baseUrl": "https://vidsrc.pro/embed",
-    "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}",
-      "anime_sub": "/anime/{malId}/{episode}/0",
-      "anime_dub": "/anime/{malId}/{episode}/1"
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}",
+      "anime_dub": "/embed/anime/{malId}/{episode}"
     },
     "quality": ["1080p", "720p"],
     "features": ["sub", "dub"],
-    "recommended": false,
-    "status": "active"
-  },
-  {
-    "id": "embedsu",
-    "name": "Embed.su",
-    "baseUrl": "https://embed.su/embed",
-    "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}"
-    },
-    "quality": ["1080p", "720p", "480p"],
-    "features": ["sub"],
     "recommended": false,
     "status": "active"
   },
   {
     "id": "autoembed",
     "name": "AutoEmbed",
-    "baseUrl": "https://player.autoembed.cc/embed",
+    "baseUrl": "https://autoembed.co",
     "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}"
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}",
+      "anime_dub": "/embed/anime/{malId}/{episode}"
+    },
+    "quality": ["1080p", "720p"],
+    "features": ["sub", "dub"],
+    "recommended": false,
+    "status": "active"
+  },
+  {
+    "id": "superembed",
+    "name": "SuperEmbed",
+    "baseUrl": "https://superembed.stream",
+    "patterns": {
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}"
+    },
+    "quality": ["1080p"],
+    "features": ["sub"],
+    "recommended": false,
+    "status": "active"
+  },
+  {
+    "id": "autoembedpro",
+    "name": "AutoEmbed Pro",
+    "baseUrl": "https://autoembed.pro",
+    "patterns": {
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}",
+      "anime_dub": "/embed/anime/{malId}/{episode}"
+    },
+    "quality": ["1080p", "720p"],
+    "features": ["sub", "dub"],
+    "recommended": false,
+    "status": "active"
+  },
+  {
+    "id": "vidify",
+    "name": "Vidify",
+    "baseUrl": "https://vidify.top",
+    "patterns": {
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}"
+    },
+    "quality": ["480p"],
+    "features": ["sub"],
+    "recommended": false,
+    "status": "active"
+  },
+  {
+    "id": "111movies",
+    "name": "111Movies",
+    "baseUrl": "https://111movies.net",
+    "patterns": {
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}"
+    },
+    "quality": ["1080p", "720p"],
+    "features": ["dub"],
+    "recommended": false,
+    "status": "active"
+  },
+  {
+    "id": "vidzee",
+    "name": "VidZee",
+    "baseUrl": "https://vidzee.wtf",
+    "patterns": {
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}"
     },
     "quality": ["1080p", "720p"],
     "features": ["sub"],
@@ -70,54 +115,17 @@
     "status": "active"
   },
   {
-    "id": "multiembed",
-    "name": "MultiEmbed",
-    "baseUrl": "https://multiembed.mov",
+    "id": "vidnest",
+    "name": "VidNest",
+    "baseUrl": "https://vidnest.fun",
     "patterns": {
-      "movie": "/?video_id={tmdbId}&tmdb=1",
-      "tv": "/?video_id={tmdbId}&tmdb=1&s={season}&e={episode}"
-    },
-    "quality": ["720p", "480p"],
-    "features": ["sub"],
-    "recommended": false,
-    "status": "active"
-  },
-  {
-    "id": "vidlink",
-    "name": "VidLink",
-    "baseUrl": "https://vidlink.pro/movie",
-    "patterns": {
-      "movie": "/{tmdbId}",
-      "tv": "/{tmdbId}?season={season}&episode={episode}"
+      "movie": "/embed/movie/{tmdbId}",
+      "tv": "/embed/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/embed/anime/{malId}/{episode}",
+      "anime_dub": "/embed/anime/{malId}/{episode}"
     },
     "quality": ["1080p", "720p"],
-    "features": ["sub"],
-    "recommended": false,
-    "status": "active"
-  },
-  {
-    "id": "vidsrc-xyz",
-    "name": "VidSrc XYZ",
-    "baseUrl": "https://vidsrc.xyz/embed",
-    "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}"
-    },
-    "quality": ["720p", "480p"],
-    "features": ["sub"],
-    "recommended": false,
-    "status": "active"
-  },
-  {
-    "id": "nontongo",
-    "name": "NontonGo",
-    "baseUrl": "https://www.nontongo.win/embed",
-    "patterns": {
-      "movie": "/movie/{tmdbId}",
-      "tv": "/tv/{tmdbId}/{season}/{episode}"
-    },
-    "quality": ["1080p", "720p"],
-    "features": ["sub"],
+    "features": ["sub", "dub"],
     "recommended": false,
     "status": "active"
   }

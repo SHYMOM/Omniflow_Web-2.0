@@ -36,9 +36,9 @@ export default function TabbedGrid() {
     : activeTab === TAB_LIST[1] ? popularLoading
     : topRatedLoading;
 
-  const sortParam = activeTab === TAB_LIST[0] ? 'this-season'
-    : activeTab === TAB_LIST[1] ? 'popular'
-    : 'top-rated';
+  const targetHref = activeTab === TAB_LIST[0] ? '/season'
+    : activeTab === TAB_LIST[1] ? '/popular'
+    : '/top-rated';
 
   return (
     <section className="py-6">
@@ -52,8 +52,8 @@ export default function TabbedGrid() {
       />
 
       <Link
-        href={`/search?sort=${sortParam}`}
-        className="block mt-4 py-3 text-center text-sm text-text-secondary bg-surface hover:bg-surface-hover border border-border rounded-lg transition-colors"
+        href={targetHref}
+        className="block mt-4 py-3 text-center text-sm text-text-secondary bg-surface hover:bg-surface-hover border border-border rounded-lg transition-colors font-bold"
       >
         View more <ArrowRight size={14} className="inline ml-1" />
       </Link>

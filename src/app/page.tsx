@@ -1,7 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { getTrendingAnime, getUpcomingAnime, getRecentlyUpdatedAnime } from '@/lib/api/anilist';
+import { getUpcomingAnime, getRecentlyUpdatedAnime } from '@/lib/api/anilist';
+import { getHybridTrending } from '@/lib/api/hybrid';
 import HeroBanner from '@/components/home/HeroBanner';
 import ContinueWatching from '@/components/home/ContinueWatching';
 import TrendingRow from '@/components/home/TrendingRow';
@@ -13,8 +14,8 @@ import RecentlyUpdated from '@/components/home/RecentlyUpdated';
 
 export default function HomePage() {
   const { data: trendingData, isLoading: trendingLoading } = useQuery({
-    queryKey: ['anime', 'trending'],
-    queryFn: () => getTrendingAnime(8),
+    queryKey: ['hybrid', 'trending'],
+    queryFn: () => getHybridTrending(),
   });
 
   const { data: upcomingData } = useQuery({

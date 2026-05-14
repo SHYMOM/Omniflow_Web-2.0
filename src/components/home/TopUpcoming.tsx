@@ -4,10 +4,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight } from 'lucide-react';
 import type { AniListMedia } from '@/types/anilist';
-import { formatMediaType, formatCountdown } from '@/lib/utils/formatters';
+import type { MediaItem } from '@/types/media';
+import { mapAniListToMediaItem } from '@/lib/api/hybrid';
+import { formatCountdown } from '@/lib/utils/formatters';
 
 interface TopUpcomingProps {
-  items: AniListMedia[];
+  items: (AniListMedia | MediaItem)[];
 }
 
 export default function TopUpcoming({ items }: TopUpcomingProps) {
@@ -18,7 +20,7 @@ export default function TopUpcoming({ items }: TopUpcomingProps) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-white">Top Upcoming</h2>
         <Link
-          href="/search?status=upcoming"
+          href="/upcoming"
           className="flex items-center gap-1 text-sm text-text-secondary hover:text-white transition-colors"
         >
           View All <ArrowRight size={14} />
@@ -26,32 +28,36 @@ export default function TopUpcoming({ items }: TopUpcomingProps) {
       </div>
 
       <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-2">
-        {items.map((media) => {
-          const title = media.title.english || media.title.romaji;
-          const posterUrl = media.coverImage?.large || '';
-          const description = media.description?.replace(/<[^>]*>/g, '') || '';
-          const studioName = media.studios?.nodes?.[0]?.name || '';
-          const genres = media.genres?.slice(0, 3) || [];
-          const formatLabel = formatMediaType(media.format || '');
-          const sourceLabel = media.source || '';
+        {(() => {
+          const seen = new Set();
+          return items.map((rawMedia) => {
+            const item = typeof rawMedia.id === 'string' ? rawMedia as MediaItem : mapAniListToMediaItem(rawMedia as AniListMedia);
+            if (seen.has(item.id)) return null;
+            seen.add(item.id);
 
-          // Calculate countdown
-          let countdown = '';
-          if (media.startDate?.year) {
-            const targetDate = new Date(
-              media.startDate.year,
-              (media.startDate.month || 1) - 1,
-              media.startDate.day || 1
-            );
-            countdown = formatCountdown(targetDate.getTime() / 1000);
-          }
+            const title = item.title || 'Unknown Title';
+            const posterUrl = item.posterUrl || '';
+            const description = item.description || '';
+            const studioName = item.studios?.[0] || '';
+            const genres = item.genres?.slice(0, 3) || [];
+            const sourceLabel = item.sourceMedia || '';
 
-          return (
-            <Link
-              key={media.id}
-              href={`/anime/${media.id}`}
-              className="shrink-0 w-[380px] bg-surface rounded-xl overflow-hidden border border-border hover:border-accent-green/30 transition-colors group"
-            >
+            // Calculate countdown
+            let countdown = '';
+            const targetYear = item.seasonYear || item.year;
+            if (targetYear) {
+              const targetDate = new Date(targetYear, 0, 1);
+              countdown = formatCountdown(targetDate.getTime() / 1000);
+            }
+
+            const targetHref = item.type === 'manga' ? `/manga/${item.id}` : item.type === 'movie' ? `/movies/${item.id}` : item.type === 'tv' ? `/tv/${item.id}` : `/anime/${item.id}`;
+
+            return (
+              <Link
+                key={item.id}
+                href={targetHref}
+                className="shrink-0 w-[380px] bg-surface rounded-xl overflow-hidden border border-border hover:border-accent-green/30 transition-colors group"
+              >
               <div className="flex p-4 gap-4">
                 {/* Poster */}
                 <div className="relative w-[120px] h-[170px] rounded-lg overflow-hidden shrink-0 bg-void">
@@ -105,8 +111,9 @@ export default function TopUpcoming({ items }: TopUpcomingProps) {
                 </div>
               </div>
             </Link>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
     </section>
   );

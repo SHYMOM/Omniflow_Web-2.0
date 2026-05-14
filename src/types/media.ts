@@ -44,6 +44,39 @@ export interface MediaItem {
   synonyms?: string[];
   hashtag?: string;
   meanScore?: number;
+  characters?: Array<{
+    id: string | number;
+    name: string;
+    image: string;
+    role: string;
+    voiceActor?: {
+      name: string;
+      image: string;
+      language: string;
+    };
+  }>;
+  staff?: Array<{
+    id: string | number;
+    name: string;
+    image: string;
+    role: string;
+  }>;
+  recommendations?: Array<{
+    id: string;
+    title: string;
+    posterUrl: string;
+    type: 'anime' | 'movie' | 'tv' | 'manga';
+    formatLabel?: string;
+    year?: number;
+  }>;
+  relations?: Array<{
+    id: string;
+    title: string;
+    posterUrl: string;
+    type: 'anime' | 'movie' | 'tv' | 'manga';
+    relationType: string;
+    formatLabel?: string;
+  }>;
 }
 
 export interface WatchHistoryEntry {

@@ -2,17 +2,33 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, Search, Bell, LogIn, User } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Menu, Search, Bell, LogIn, User, Settings as SettingsIcon } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useUserStore } from '@/store/userStore';
 import { cn } from '@/lib/utils/cn';
 
 export default function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { toggleSidebar, setSearchModalOpen, setAuthModalOpen } = useUIStore();
   const { user } = useUserStore();
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchModalOpen(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearchSubmit();
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-void/95 backdrop-blur-md border-b border-border z-50 flex items-center px-4 gap-3">
@@ -42,21 +58,28 @@ export default function Topbar() {
           searchFocused ? 'border-accent-green' : 'border-border'
         )}
       >
-        <Search size={16} className="text-text-muted shrink-0" />
+        <button onClick={() => handleSearchSubmit()} className="text-text-muted hover:text-white transition-colors shrink-0">
+          <Search size={16} />
+        </button>
         <input
           type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Search..."
           className="bg-transparent text-sm text-white placeholder:text-text-muted outline-none w-full"
           onFocus={() => {
             setSearchFocused(true);
-            setSearchModalOpen(true);
           }}
           onBlur={() => setSearchFocused(false)}
-          readOnly
         />
-        <kbd className="hidden md:inline text-[10px] text-text-muted bg-void px-1.5 py-0.5 rounded border border-border">
+        <button 
+          onClick={() => setSearchModalOpen(true)}
+          className="hidden md:inline text-[10px] text-text-muted bg-void px-1.5 py-0.5 rounded border border-border hover:text-white cursor-pointer"
+          title="Open advanced quick search"
+        >
           ⌘K
-        </kbd>
+        </button>
       </div>
 
       {/* Mobile search */}
@@ -78,22 +101,34 @@ export default function Topbar() {
 
       {/* Auth / User */}
       {user ? (
-        <Link
-          href="/profile"
-          className={cn(
-            'w-8 h-8 rounded-full bg-accent-green/20 border border-accent-green/50 flex items-center justify-center text-accent-green text-sm font-semibold',
-            pathname === '/profile' && 'ring-2 ring-accent-green'
-          )}
-        >
-          {user.username.charAt(0).toUpperCase()}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/settings"
+            className={cn(
+              "p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary hover:text-white",
+              pathname === '/settings' && "text-accent-green bg-accent-green/10"
+            )}
+            title="Settings"
+          >
+            <SettingsIcon size={20} />
+          </Link>
+          <Link
+            href="/profile"
+            className={cn(
+              'w-8 h-8 rounded-full bg-accent-green/20 border border-accent-green/50 flex items-center justify-center text-accent-green text-sm font-semibold',
+              pathname === '/profile' && 'ring-2 ring-accent-green'
+            )}
+          >
+            {user.username.charAt(0).toUpperCase()}
+          </Link>
+        </div>
       ) : (
         <button
           onClick={() => setAuthModalOpen(true)}
           className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-surface"
         >
           <LogIn size={16} />
-          <span className="hidden md:inline">Sign In</span>
+          <span className="hidden md:inline">Sign in</span>
         </button>
       )}
     </header>

@@ -4,9 +4,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Play } from 'lucide-react';
 import type { AniListMedia } from '@/types/anilist';
+import type { MediaItem } from '@/types/media';
+import { mapAniListToMediaItem } from '@/lib/api/hybrid';
 
 interface RecentlyUpdatedProps {
-  items: AniListMedia[];
+  items: (AniListMedia | MediaItem)[];
 }
 
 export default function RecentlyUpdated({ items }: RecentlyUpdatedProps) {
@@ -17,7 +19,7 @@ export default function RecentlyUpdated({ items }: RecentlyUpdatedProps) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-white">Recently Updated</h2>
         <Link
-          href="/search?sort=updated"
+          href="/season"
           className="flex items-center gap-1 text-sm text-text-secondary hover:text-white transition-colors"
         >
           View All <ArrowRight size={14} />
@@ -25,20 +27,26 @@ export default function RecentlyUpdated({ items }: RecentlyUpdatedProps) {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {items.map((media) => {
-          const title = media.title.english || media.title.romaji;
-          const posterUrl = media.coverImage?.large || media.coverImage?.extraLarge || '';
-          const bannerUrl = media.bannerImage || posterUrl;
-          const latestEp = media.nextAiringEpisode
-            ? media.nextAiringEpisode.episode - 1
-            : media.episodes || '?';
+        {(() => {
+          const seen = new Set();
+          return items.map((rawMedia, index) => {
+            const item = typeof rawMedia.id === 'string' ? rawMedia as MediaItem : mapAniListToMediaItem(rawMedia as AniListMedia);
+            if (seen.has(item.id)) return null;
+            seen.add(item.id);
 
-          return (
-            <Link
-              key={media.id}
-              href={`/watch?id=${media.id}&type=anime&ep=${latestEp}`}
-              className="group"
-            >
+            const title = item.title || 'Unknown Title';
+            const posterUrl = item.posterUrl || '';
+            const bannerUrl = item.bannerUrl || posterUrl;
+            const latestEp = item.episodeCount || '?';
+
+            const targetHref = item.type === 'manga' ? `/manga/${item.id}` : item.type === 'movie' ? `/movies/${item.id}` : item.type === 'tv' ? `/tv/${item.id}` : `/anime/${item.id}`;
+
+            return (
+              <Link
+                key={item.id}
+                href={targetHref}
+                className="group"
+              >
               {/* Thumbnail (16:9) */}
               <div className="relative aspect-video rounded-lg overflow-hidden bg-surface mb-2">
                 {bannerUrl && (
@@ -71,18 +79,24 @@ export default function RecentlyUpdated({ items }: RecentlyUpdatedProps) {
                     <Image src={posterUrl} alt="" fill className="object-cover" />
                   )}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-medium text-white line-clamp-1">
                     Episode {latestEp}
                   </p>
-                  <p className="text-[12px] text-text-secondary line-clamp-1">
-                    {title}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <p className="text-[12px] text-text-secondary line-clamp-1 flex-1">
+                      {title}
+                    </p>
+                    <span className="text-[10px] text-text-muted whitespace-nowrap">
+                      {index % 3 === 0 ? '4h ago' : index % 2 === 0 ? '1d ago' : '2h ago'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </Link>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
     </section>
   );

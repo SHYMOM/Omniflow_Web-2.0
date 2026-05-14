@@ -7,6 +7,7 @@ export interface TMDBMovie {
   title: string;
   original_title: string;
   overview: string;
+  media_type?: 'movie' | 'tv';
   poster_path: string | null;
   backdrop_path: string | null;
   release_date: string;
@@ -32,6 +33,7 @@ export interface TMDBTVShow {
   name: string;
   original_name: string;
   overview: string;
+  media_type?: 'movie' | 'tv';
   poster_path: string | null;
   backdrop_path: string | null;
   first_air_date: string;

@@ -23,6 +23,7 @@ interface UserState {
   addToHistory: (entry: WatchHistoryEntry) => void;
   removeFromHistory: (mediaId: string, episodeNumber?: number) => void;
   clearHistory: () => void;
+  importHistory: (entries: WatchHistoryEntry[]) => void;
   historyPaused: boolean;
   toggleHistoryPause: () => void;
 
@@ -30,6 +31,7 @@ interface UserState {
     autoPlayNext: boolean;
     defaultToDub: boolean;
     defaultServerId: string;
+    autoPlayTrailer: boolean;
   };
   updateSettings: (settings: Partial<UserState['settings']>) => void;
 }
@@ -88,6 +90,16 @@ export const useUserStore = create<UserState>()(
           ),
         })),
       clearHistory: () => set({ history: [] }),
+      importHistory: (entries) =>
+        set((state) => {
+          const merged = [...entries, ...state.history];
+          const uniqueMap = new Map();
+          for (const item of merged) {
+            const key = `${item.mediaId}-${item.episodeNumber}`;
+            if (!uniqueMap.has(key)) uniqueMap.set(key, item);
+          }
+          return { history: Array.from(uniqueMap.values()).slice(0, 500) };
+        }),
       historyPaused: false,
       toggleHistoryPause: () => set((state) => ({ historyPaused: !state.historyPaused })),
 
@@ -95,6 +107,7 @@ export const useUserStore = create<UserState>()(
         autoPlayNext: true,
         defaultToDub: false,
         defaultServerId: 'vidsrc-icu',
+        autoPlayTrailer: true,
       },
       updateSettings: (newSettings) =>
         set((state) => ({ settings: { ...state.settings, ...newSettings } })),

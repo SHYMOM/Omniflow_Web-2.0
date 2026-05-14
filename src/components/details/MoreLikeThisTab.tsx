@@ -2,35 +2,45 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import type { AniListMedia } from '@/types/anilist';
-import { formatMediaType } from '@/lib/utils/formatters';
+import type { MediaItem } from '@/types/media';
 
-interface MoreLikeThisTabProps { media: AniListMedia; }
+interface MoreLikeThisTabProps { media: MediaItem; }
 
 export default function MoreLikeThisTab({ media }: MoreLikeThisTabProps) {
-  const recommendations = (media.recommendations?.nodes || [])
-    .map(n => n.mediaRecommendation)
-    .filter(Boolean);
+  const recommendations = media.recommendations || [];
 
   return (
     <div className="pb-8">
       <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-7 gap-3">
-        {recommendations.map((rec) => {
-          if (!rec) return null;
-          const title = rec.title.english || rec.title.romaji;
-          const href = rec.type === 'MANGA' ? `/manga/${rec.id}` : `/anime/${rec.id}`;
-          return (
-            <Link key={rec.id} href={href} className="group">
-              <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-1.5">
-                <Image src={rec.coverImage.large} alt={title} fill className="object-cover group-hover:scale-105 transition-transform" />
-              </div>
-              <p className="text-[11px] text-text-secondary">{formatMediaType(rec.format)} {rec.seasonYear || ''}</p>
-              <p className="text-[13px] text-white line-clamp-1">{title}</p>
-            </Link>
-          );
-        })}
+        {(() => {
+          const seen = new Set();
+          return recommendations.map((rec) => {
+            if (!rec) return null;
+            if (seen.has(rec.id)) return null;
+            seen.add(rec.id);
+
+            const href = `/${rec.type}/${rec.id}`;
+            return (
+              <Link key={rec.id} href={href} className="group">
+                <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-1.5 border border-border/30">
+                  <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" />
+                </div>
+                <p className="text-[10px] text-text-muted uppercase font-bold tracking-tighter">
+                  {rec.formatLabel} {rec.year || ''}
+                </p>
+                <p className="text-[13px] text-white line-clamp-1 group-hover:text-accent-green transition-colors font-medium">
+                  {rec.title}
+                </p>
+              </Link>
+            );
+          });
+        })()}
       </div>
-      {recommendations.length === 0 && <p className="text-center text-text-muted py-8">No recommendations found.</p>}
+      {recommendations.length === 0 && (
+        <div className="text-center py-12 bg-surface/20 rounded-xl border border-dashed border-border">
+          <p className="text-text-muted text-sm italic">No recommendations found for this title.</p>
+        </div>
+      )}
     </div>
   );
 }

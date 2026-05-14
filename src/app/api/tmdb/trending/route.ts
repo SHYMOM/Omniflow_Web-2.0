@@ -8,9 +8,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'movie';
     const timeWindow = searchParams.get('timeWindow') || 'week';
+    const page = searchParams.get('page') || '1';
 
     const response = await fetch(
-      `${TMDB_BASE}/trending/${type}/${timeWindow}?api_key=${TMDB_KEY}&language=en-US`,
+      `${TMDB_BASE}/trending/${type}/${timeWindow}?api_key=${TMDB_KEY}&language=en-US&page=${page}`,
       { next: { revalidate: 3600 } }
     );
 
