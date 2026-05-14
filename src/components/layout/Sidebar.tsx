@@ -22,7 +22,7 @@ const categoryLinks = [
 
 const accountLinks = [
   { href: '/watchlist', label: 'My List', icon: ListVideo },
-  { href: '/profile', label: 'Settings', icon: Settings },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Sidebar() {

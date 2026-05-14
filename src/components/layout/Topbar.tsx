@@ -31,35 +31,35 @@ export default function Topbar() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-14 bg-void/95 backdrop-blur-md border-b border-border z-50 flex items-center px-4 gap-3">
+    <header className="fixed top-0 left-0 right-0 h-20 bg-gradient-to-b from-black/80 via-black/40 to-transparent z-[100] flex items-center px-6 gap-3 pointer-events-none">
       {/* Hamburger */}
       <button
         onClick={toggleSidebar}
-        className="p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary hover:text-white"
+        className="p-2 rounded-lg hover:bg-white/10 transition-colors text-white pointer-events-auto"
         aria-label="Toggle sidebar"
       >
-        <Menu size={20} />
+        <Menu size={22} />
       </button>
 
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 mr-4 shrink-0">
-        <span className="font-display text-lg font-bold tracking-[2px] text-white">
-          OMNISTREAM
+      <Link href="/" className="flex items-center gap-2 mr-4 shrink-0 pointer-events-auto">
+        <span className="font-display text-xl font-bold tracking-[3px] text-white drop-shadow-lg">
+          ANIMETSU
         </span>
       </Link>
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Search Bar */}
+      {/* Glassy Search Bar */}
       <div
         className={cn(
-          'hidden sm:flex items-center gap-2 bg-surface border rounded-lg px-3 py-2 transition-all max-w-[400px] w-full',
-          searchFocused ? 'border-accent-green' : 'border-border'
+          'hidden sm:flex items-center gap-3 bg-white/10 backdrop-blur-xl border border-white/10 rounded-xl px-4 py-2 transition-all max-w-[400px] w-full pointer-events-auto',
+          searchFocused ? 'bg-white/20 border-accent-green/50 ring-2 ring-accent-green/20' : 'hover:bg-white/15'
         )}
       >
-        <button onClick={() => handleSearchSubmit()} className="text-text-muted hover:text-white transition-colors shrink-0">
-          <Search size={16} />
+        <button onClick={() => handleSearchSubmit()} className="text-white/60 hover:text-white transition-colors shrink-0">
+          <Search size={18} />
         </button>
         <input
           type="text"
@@ -67,7 +67,7 @@ export default function Topbar() {
           onChange={e => setSearchQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Search..."
-          className="bg-transparent text-sm text-white placeholder:text-text-muted outline-none w-full"
+          className="bg-transparent text-sm text-white placeholder:text-white/40 outline-none w-full font-medium"
           onFocus={() => {
             setSearchFocused(true);
           }}
@@ -75,7 +75,7 @@ export default function Topbar() {
         />
         <button 
           onClick={() => setSearchModalOpen(true)}
-          className="hidden md:inline text-[10px] text-text-muted bg-void px-1.5 py-0.5 rounded border border-border hover:text-white cursor-pointer"
+          className="hidden md:inline text-[9px] font-black text-white/40 bg-black/40 px-1.5 py-0.5 rounded-md border border-white/5 hover:text-white transition-colors"
           title="Open advanced quick search"
         >
           ⌘K

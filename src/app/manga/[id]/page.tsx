@@ -8,10 +8,11 @@ import { extractId } from '@/lib/api/hybrid';
 import DetailHeader from '@/components/details/DetailHeader';
 import OverviewTab from '@/components/details/OverviewTab';
 import RelatedTab from '@/components/details/RelatedTab';
+import CharactersTab from '@/components/details/CharactersTab';
 import Tabs from '@/components/ui/Tabs';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-const TABS = ['Overview', 'Chapters', 'Related'];
+const TABS = ['Overview', 'Chapters', 'Characters', 'Related'];
 
 export default function MangaDetailPage() {
   const params = useParams();
@@ -55,6 +56,7 @@ export default function MangaDetailPage() {
              ))}
           </div>
         )}
+        {activeTab === 'Characters' && <CharactersTab media={media} />}
         {activeTab === 'Related' && <RelatedTab media={media} />}
       </div>
     </div>

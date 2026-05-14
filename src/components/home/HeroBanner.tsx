@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,6 +19,9 @@ export default function HeroBanner({ items }: HeroBannerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const playerRef = useRef<any>(null);
   const { settings } = useUserStore();
   const autoPlayTrailer = settings?.autoPlayTrailer ?? true;
 
@@ -26,10 +29,14 @@ export default function HeroBanner({ items }: HeroBannerProps) {
   const current: MediaItem | null = rawCurrent 
     ? (typeof rawCurrent.id === 'string' ? rawCurrent as MediaItem : mapAniListToMediaItem(rawCurrent as AniListMedia))
     : null;
-  const trailerYoutubeId = current?.trailerYoutubeId;
+  
+  // Use background image if video error occurs
+  const trailerYoutubeId = videoError ? null : current?.trailerYoutubeId;
 
-  const navigate = useCallback((dir: 'prev' | 'next') => {
-    setUserInteracted(true);
+  const navigate = useCallback((dir: 'prev' | 'next', manual = false) => {
+    if (manual) setUserInteracted(true);
+    setVideoError(false);
+    setProgress(0);
     setCurrentIndex((prev) =>
       dir === 'prev'
         ? (prev - 1 + items.length) % items.length
@@ -37,62 +44,101 @@ export default function HeroBanner({ items }: HeroBannerProps) {
     );
   }, [items.length]);
 
-  // Auto-cycle banner slides sequentially
+  // Handle mute/unmute via YT API to avoid reload
+  useEffect(() => {
+    if (playerRef.current && playerRef.current.mute) {
+      if (isMuted) playerRef.current.mute();
+      else playerRef.current.unMute();
+    }
+  }, [isMuted]);
+
+  // Progress and Auto-cycle timer
   useEffect(() => {
     if (userInteracted || items.length <= 1) return;
     
-    // If we have a trailer playing, we wait for it to end.
-    // If not, we use the fallback timer.
-    if (autoPlayTrailer && trailerYoutubeId) return;
+    const duration = autoPlayTrailer && trailerYoutubeId ? 30000 : 8000; // 30s for trailer, 8s for image
+    const interval = 100;
+    const step = (interval / duration) * 100;
 
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % items.length);
-    }, 12000);
+      setProgress((prev) => {
+        if (prev >= 100) {
+          navigate('next');
+          return 0;
+        }
+        return prev + step;
+      });
+    }, interval);
+
     return () => clearInterval(timer);
-  }, [userInteracted, items.length, autoPlayTrailer, trailerYoutubeId]);
+  }, [userInteracted, items.length, autoPlayTrailer, trailerYoutubeId, navigate]);
 
-  // YouTube API integration for end-of-video detection
+  // YouTube API integration
   useEffect(() => {
-    if (!autoPlayTrailer || !trailerYoutubeId) return;
-
-    let player: any;
-
-    const onPlayerStateChange = (event: any) => {
-      if (event.data === (window as any).YT?.PlayerState?.ENDED) {
-        navigate('next');
-      }
-    };
+    if (!autoPlayTrailer || !trailerYoutubeId) {
+      playerRef.current = null;
+      return;
+    }
 
     const setupPlayer = () => {
       try {
-        player = new (window as any).YT.Player(`hero-player-${currentIndex}`, {
+        playerRef.current = new (window as any).YT.Player(`hero-player-${currentIndex}`, {
           events: {
-            'onStateChange': onPlayerStateChange
+            'onStateChange': (event: any) => {
+              if (event.data === (window as any).YT.PlayerState.ENDED) {
+                navigate('next');
+              }
+            },
+            'onError': () => {
+              setVideoError(true);
+            },
+            'onReady': (event: any) => {
+              if (isMuted) event.target.mute();
+              else event.target.unMute();
+            }
           }
         });
       } catch (err) {
-        console.warn('YT Player init failed', err);
+        setVideoError(true);
       }
     };
 
     if (!(window as any).YT) {
       const tag = document.createElement('script');
       tag.src = "https://www.youtube.com/iframe_api";
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+      document.body.appendChild(tag);
       (window as any).onYouTubeIframeAPIReady = setupPlayer;
     } else if ((window as any).YT.Player) {
       setupPlayer();
     }
 
     return () => {
-      if (player && player.destroy) {
-        try { player.destroy(); } catch(e) {}
+      if (playerRef.current?.destroy) {
+        playerRef.current.destroy();
+        playerRef.current = null;
       }
     };
   }, [currentIndex, trailerYoutubeId, autoPlayTrailer, navigate]);
 
-  if (!current) return null;
+  if (!current) {
+    return (
+      <section className="relative w-full h-[75vh] min-h-[500px] bg-void overflow-hidden">
+        <div className="absolute inset-0 flex flex-col justify-end p-6 md:p-16 pb-16 md:pb-20">
+          <div className="w-1/2 h-10 bg-white/5 animate-pulse rounded-lg mb-6" />
+          <div className="flex gap-3 mb-6">
+            {[1, 2, 3, 4].map(i => <div key={i} className="w-20 h-6 bg-white/5 animate-pulse rounded-md" />)}
+          </div>
+          <div className="w-2/3 h-4 bg-white/5 animate-pulse rounded-md mb-2" />
+          <div className="w-1/2 h-4 bg-white/5 animate-pulse rounded-md mb-8" />
+          <div className="flex gap-4">
+            <div className="w-32 h-12 bg-white/5 animate-pulse rounded-full" />
+            <div className="w-12 h-12 bg-white/5 animate-pulse rounded-full" />
+            <div className="w-12 h-12 bg-white/5 animate-pulse rounded-full" />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   const title = current.title || 'Unknown Title';
   const description = current.description?.replace(/<[^>]*>/g, '') || '';
@@ -103,12 +149,10 @@ export default function HeroBanner({ items }: HeroBannerProps) {
   const seasonLabel = current.season && current.seasonYear ? `${current.season} ${current.seasonYear}` : current.year ? `${current.year}` : '?';
 
   const scoreVariant = (current.score || 0) > 7.5 ? 'green' : 'default';
-
-  const href = current.type === 'manga' ? `/manga/${current.id}` : current.type === 'movie' ? `/movies/${current.id}` : current.type === 'tv' ? `/tv/${current.id}` : `/anime/${current.id}`;
-  const watchHref = current.type === 'manga' ? href : `/watch?id=${current.id}&type=${current.type}&ep=1`;
+  const watchHref = current.type === 'manga' ? `/manga/${current.id}` : `/watch?id=${current.id}&type=${current.type}&ep=1`;
 
   return (
-    <section className="relative w-full h-[70vh] min-h-[400px] max-h-[700px] overflow-hidden bg-void">
+    <section className="relative w-full h-[75vh] min-h-[500px] overflow-hidden bg-void group">
       <AnimatePresence mode="wait">
         <motion.div
           key={currentIndex}
@@ -118,121 +162,126 @@ export default function HeroBanner({ items }: HeroBannerProps) {
           transition={{ duration: 0.8 }}
           className="absolute inset-0"
         >
-          {/* Dynamic Auto Play Trailer or Background Image */}
-          {autoPlayTrailer && trailerYoutubeId ? (
-            <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
-              <iframe
-                id={`hero-player-${currentIndex}`}
-                src={`https://www.youtube.com/embed/${trailerYoutubeId}?autoplay=1&mute=${isMuted ? '1' : '0'}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1&iv_load_policy=3&disablekb=1&widget_referrer=${typeof window !== 'undefined' ? window.location.origin : ''}&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                title={title}
-                allow="autoplay; encrypted-media"
-                className="absolute w-[105vw] h-[105vh] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              />
-            </div>
-          ) : bgUrl ? (
+          {/* Backdrop Image base layer */}
+          {bgUrl && (
             <Image
               src={bgUrl}
-              alt={title}
+              alt=""
               fill
               priority
-              className="object-cover"
-              style={{ animation: 'ken-burns 20s ease-in-out infinite' }}
+              className="object-cover transition-transform duration-[12s] group-hover:scale-105"
             />
-          ) : null}
+          )}
 
-          {/* Premium Gradient Overlays */}
-          <div className="absolute inset-0 bg-gradient-to-t from-void via-void/50 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-void via-void/80 to-transparent md:w-2/3" />
+          {/* Video Trailer Layer */}
+          {autoPlayTrailer && trailerYoutubeId && !videoError && (
+            <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[115%] h-[115%]">
+                <iframe
+                  id={`hero-player-${currentIndex}`}
+                  src={`https://www.youtube.com/embed/${trailerYoutubeId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1&iv_load_policy=3&disablekb=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
+                  title={title}
+                  allow="autoplay; encrypted-media"
+                  className="w-full h-full object-cover scale-[1.35]"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Cinematic Shadow Overlays */}
+          {/* Bottom Shadow - Deep fade into the void background */}
+          <div className="absolute inset-0 bg-gradient-to-t from-void via-void/50 to-transparent z-[5]" />
+          <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-void to-transparent z-[5]" />
+          
+          {/* Top Shadow - For navigation bar readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent z-[5]" />
+          
+          {/* Overall darkening for text contrast */}
+          <div className="absolute inset-0 bg-black/15 z-[4]" />
         </motion.div>
       </AnimatePresence>
 
-      {/* Content — bottom left */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10 z-10 pointer-events-none">
+      {/* Main UI Content Stack */}
+      <div className="absolute inset-0 flex flex-col justify-end p-6 md:p-16 pb-16 md:pb-20 z-20 pointer-events-none">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentIndex}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="max-w-[650px] pointer-events-auto"
+            transition={{ duration: 0.5 }}
+            className="max-w-4xl pointer-events-auto"
           >
-            {/* Title */}
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-3 line-clamp-2 font-display tracking-wide">
+            {/* Title - Optimized size */}
+            <h1 className="text-2xl md:text-4xl font-bold text-white mb-6 drop-shadow-xl tracking-tight leading-tight">
               {title}
             </h1>
 
-            {/* Badges */}
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              <TypeBadge label={formatLabel} />
-              {scoreLabel !== 'N/A' && <TypeBadge label={scoreLabel} variant={scoreVariant} />}
-              {durationLabel !== '?' && <TypeBadge label={durationLabel} />}
-              {seasonLabel !== '?' && <TypeBadge label={seasonLabel} />}
+            {/* Badges Row matching pixel-perfect screenshot tags */}
+            <div className="flex flex-wrap items-center gap-2.5 mb-6">
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 px-3 py-1 rounded-md text-[11px] font-medium text-white/80 tracking-wide">
+                {formatLabel}
+              </div>
+              
+              {scoreLabel !== 'N/A' && (
+                <div className="bg-accent-green/20 backdrop-blur-md border border-accent-green/30 px-3 py-1 rounded-md text-[11px] font-bold text-accent-green tracking-wide">
+                  {scoreLabel}
+                </div>
+              )}
+
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 px-3 py-1 rounded-md text-[11px] font-medium text-white/80 tracking-wide">
+                {durationLabel}
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 px-3 py-1 rounded-md text-[11px] font-medium text-white/80 tracking-wide">
+                {seasonLabel}
+              </div>
             </div>
 
-            {/* Description */}
-            <p className="text-xs md:text-sm text-text-secondary line-clamp-3 mb-6 max-w-[550px] leading-relaxed">
+            {/* Description - Brief one-liner as seen in reference */}
+            <p className="text-sm md:text-base text-white/90 line-clamp-2 mb-8 max-w-2xl font-normal drop-shadow-md leading-relaxed">
               {description}
             </p>
 
-            {/* Action buttons */}
+            {/* Action Buttons Row */}
             <div className="flex items-center gap-3">
               <Link
                 href={watchHref}
-                className="flex items-center gap-2 bg-white text-black font-bold text-xs md:text-sm px-6 py-3 rounded-lg hover:bg-gray-200 transition-colors shadow-lg cursor-pointer"
+                className="flex items-center gap-2.5 bg-white text-black font-bold text-[13px] px-7 py-3 rounded-full hover:bg-gray-200 transition-all active:scale-95 shadow-2xl"
               >
-                <Play size={16} fill="currentColor" />
-                Watch now
+                <Play size={18} fill="currentColor" />
+                Watch Now
               </Link>
-              <button
-                className="p-3 rounded-lg bg-surface/80 backdrop-blur-md border border-border hover:bg-surface transition-colors text-white cursor-pointer"
-                aria-label="Add to watchlist"
-              >
+
+              <button className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95">
                 <Bookmark size={18} />
               </button>
-              {autoPlayTrailer && trailerYoutubeId && (
-                <button
-                  onClick={() => setIsMuted(!isMuted)}
-                  className="p-3 rounded-lg bg-surface/80 backdrop-blur-md border border-border hover:bg-surface transition-colors text-white cursor-pointer"
-                  aria-label={isMuted ? 'Unmute trailer' : 'Mute trailer'}
-                >
-                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                </button>
-              )}
+
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95"
+              >
+                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
             </div>
           </motion.div>
         </AnimatePresence>
       </div>
 
-      {/* Carousel nav arrows — right side */}
-      <div className="absolute right-6 bottom-8 z-10 flex items-center gap-2 pointer-events-auto">
-        <button
-          onClick={() => navigate('prev')}
-          className="w-10 h-10 rounded-full bg-surface/80 backdrop-blur-md border border-border flex items-center justify-center text-white hover:bg-surface transition-colors cursor-pointer"
-          aria-label="Previous slide"
+      {/* Navigation Arrows - Bottom Right Horizontal as in Screenshot */}
+      <div className="absolute right-6 md:right-16 bottom-16 md:bottom-20 z-30 flex items-center gap-3 pointer-events-auto">
+        <button 
+          onClick={() => navigate('prev', true)} 
+          className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-90 shadow-lg"
         >
-          <ChevronLeft size={18} />
+          <ChevronLeft size={20} />
         </button>
-        <button
-          onClick={() => navigate('next')}
-          className="w-10 h-10 rounded-full bg-surface/80 backdrop-blur-md border border-border flex items-center justify-center text-white hover:bg-surface transition-colors cursor-pointer"
-          aria-label="Next slide"
+        <button 
+          onClick={() => navigate('next', true)} 
+          className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-90 shadow-lg"
         >
-          <ChevronRight size={18} />
+          <ChevronRight size={20} />
         </button>
-      </div>
-
-      {/* Slide indicators */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex gap-1.5 pointer-events-auto">
-        {items.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => { setUserInteracted(true); setCurrentIndex(i); }}
-            className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
-              i === currentIndex ? 'bg-accent-green w-6' : 'bg-white/30 hover:bg-white/50'
-            }`}
-          />
-        ))}
       </div>
     </section>
   );

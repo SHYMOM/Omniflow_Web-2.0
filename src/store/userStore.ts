@@ -30,8 +30,8 @@ interface UserState {
   settings: {
     autoPlayNext: boolean;
     defaultToDub: boolean;
-    defaultServerId: string;
     autoPlayTrailer: boolean;
+    hideAdult: boolean;
   };
   updateSettings: (settings: Partial<UserState['settings']>) => void;
 }
@@ -77,11 +77,10 @@ export const useUserStore = create<UserState>()(
       addToHistory: (entry) =>
         set((state) => {
           if (state.historyPaused) return state;
-          // Remove existing entry for same media+episode, then prepend
-          const filtered = state.history.filter(
-            (h) => !(h.mediaId === entry.mediaId && h.episodeNumber === entry.episodeNumber)
-          );
-          return { history: [entry, ...filtered].slice(0, 200) }; // Keep last 200
+          // Robust deduplication: Remove any existing entry for this media ID entirely
+          // to ensure only the latest episode for a series is shown in 'Jump Back In'.
+          const filtered = state.history.filter((h) => h.mediaId !== entry.mediaId);
+          return { history: [entry, ...filtered].slice(0, 100) }; 
         }),
       removeFromHistory: (mediaId, episodeNumber) =>
         set((state) => ({
@@ -108,6 +107,7 @@ export const useUserStore = create<UserState>()(
         defaultToDub: false,
         defaultServerId: 'vidsrc-icu',
         autoPlayTrailer: true,
+        hideAdult: true,
       },
       updateSettings: (newSettings) =>
         set((state) => ({ settings: { ...state.settings, ...newSettings } })),

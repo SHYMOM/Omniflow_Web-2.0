@@ -3,19 +3,20 @@ import type { TMDBMovie, TMDBTVShow, TMDBSeason, TMDBListResponse } from '@/type
 
 const TMDB_PROXY = '/api/tmdb';
 
+async function queryTMDB<T>(path: string, params: Record<string, any> = {}): Promise<T> {
+  const { data } = await axios.get<T>(`${TMDB_PROXY}${path}`, { params });
+  return data;
+}
+
 // ─── Trending ────────────────────────────────────────────────
 export async function getTrendingMovies(timeWindow: 'day' | 'week' = 'week', page = 1): Promise<TMDBMovie[]> {
-  const { data } = await axios.get<TMDBListResponse<TMDBMovie>>(
-    `${TMDB_PROXY}/trending`, { params: { type: 'movie', timeWindow, page } }
-  );
-  return data.results;
+  const res = await queryTMDB<{ results: TMDBMovie[] }>('/trending', { type: 'movie', timeWindow, page });
+  return res.results;
 }
 
 export async function getTrendingTV(timeWindow: 'day' | 'week' = 'week', page = 1): Promise<TMDBTVShow[]> {
-  const { data } = await axios.get<TMDBListResponse<TMDBTVShow>>(
-    `${TMDB_PROXY}/trending`, { params: { type: 'tv', timeWindow, page } }
-  );
-  return data.results;
+  const res = await queryTMDB<{ results: TMDBTVShow[] }>('/trending', { type: 'tv', timeWindow, page });
+  return res.results;
 }
 
 // ─── Details ─────────────────────────────────────────────────
@@ -44,10 +45,17 @@ export async function searchTMDB(
   return data;
 }
 
-// ─── Videos / Trailers ───────────────────────────────────────
 export async function getMovieTrailerKey(id: number): Promise<string | null> {
   const { data } = await axios.get<{ results: { key: string; site: string; type: string }[] }>(
     `${TMDB_PROXY}/movie/${id}/videos`
+  );
+  const trailer = data.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+  return trailer?.key || data.results.find(v => v.site === 'YouTube')?.key || null;
+}
+
+export async function getTVTrailerKey(id: number): Promise<string | null> {
+  const { data } = await axios.get<{ results: { key: string; site: string; type: string }[] }>(
+    `${TMDB_PROXY}/tv/${id}/videos`
   );
   const trailer = data.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
   return trailer?.key || data.results.find(v => v.site === 'YouTube')?.key || null;

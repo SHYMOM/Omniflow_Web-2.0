@@ -11,11 +11,11 @@ export default function ContinueWatching() {
   if (recentHistory.length === 0) return null;
 
   return (
-    <section className="px-4 md:px-6 py-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-white">Jump Back In</h2>
-        <Link href="/history" className="flex items-center gap-1 text-sm text-text-secondary hover:text-white transition-colors">
-          View All <ArrowRight size={14} />
+    <section className="px-4 md:px-6 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold text-white tracking-tight">Jump Back In</h2>
+        <Link href="/history" className="text-text-muted hover:text-white transition-colors">
+          <ArrowRight size={20} strokeWidth={1.5} />
         </Link>
       </div>
       <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">

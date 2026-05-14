@@ -1,36 +1,78 @@
 'use client';
 
+import { useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, Play } from 'lucide-react';
-import type { AniListMedia } from '@/types/anilist';
-import type { MediaItem } from '@/types/media';
+import { ArrowRight, Play, Loader2 } from 'lucide-react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInView } from 'react-intersection-observer';
+import { getRecentlyUpdatedAnime } from '@/lib/api/anilist';
 import { mapAniListToMediaItem } from '@/lib/api/hybrid';
+import { useUserStore } from '@/store/userStore';
 
-interface RecentlyUpdatedProps {
-  items: (AniListMedia | MediaItem)[];
-}
+export default function RecentlyUpdated() {
+  const { ref, inView } = useInView();
+  const { settings } = useUserStore();
+  const hideAdult = settings.hideAdult;
 
-export default function RecentlyUpdated({ items }: RecentlyUpdatedProps) {
-  if (!items.length) return null;
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status
+  } = useInfiniteQuery({
+    queryKey: ['anime', 'recently-updated-infinite', hideAdult],
+    queryFn: ({ pageParam = 1 }) => getRecentlyUpdatedAnime(20, pageParam, hideAdult),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
+  });
+
+  useEffect(() => {
+    if (inView && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, fetchNextPage, hasNextPage]);
+
+  const allItems = useMemo(() => {
+    return data?.pages.flat() || [];
+  }, [data]);
+
+  if (status === 'pending') {
+    return (
+      <div className="px-4 md:px-6 py-6 flex flex-col gap-4">
+        <div className="h-6 w-40 bg-surface skeleton rounded" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="aspect-video bg-surface skeleton rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'success' && allItems.length === 0) return null;
 
   return (
-    <section className="px-4 md:px-6 py-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-white">Recently Updated</h2>
+    <section className="px-4 md:px-6 py-10">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-2xl font-bold text-white font-display">Recently Updated</h2>
+          <span className="text-[10px] text-accent-green font-bold uppercase tracking-widest border border-accent-green/30 px-1.5 py-0.5 rounded bg-accent-green/5">Live</span>
+        </div>
         <Link
           href="/season"
-          className="flex items-center gap-1 text-sm text-text-secondary hover:text-white transition-colors"
+          className="flex items-center gap-1 text-sm text-text-secondary hover:text-white transition-colors group"
         >
-          View All <ArrowRight size={14} />
+          View Season <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
         </Link>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {(() => {
           const seen = new Set();
-          return items.map((rawMedia, index) => {
-            const item = typeof rawMedia.id === 'string' ? rawMedia as MediaItem : mapAniListToMediaItem(rawMedia as AniListMedia);
+          return allItems.map((rawMedia, index) => {
+            const item = mapAniListToMediaItem(rawMedia);
             if (seen.has(item.id)) return null;
             seen.add(item.id);
 
@@ -38,65 +80,62 @@ export default function RecentlyUpdated({ items }: RecentlyUpdatedProps) {
             const posterUrl = item.posterUrl || '';
             const bannerUrl = item.bannerUrl || posterUrl;
             const latestEp = item.episodeCount || '?';
-
-            const targetHref = item.type === 'manga' ? `/manga/${item.id}` : item.type === 'movie' ? `/movies/${item.id}` : item.type === 'tv' ? `/tv/${item.id}` : `/anime/${item.id}`;
+            const targetHref = `/${item.type}/${item.id}`;
+            const watchHref = `/watch?id=${item.id}&type=${item.type}&ep=${item.episodeCount || 1}`;
 
             return (
-              <Link
-                key={item.id}
-                href={targetHref}
-                className="group"
-              >
-              {/* Thumbnail (16:9) */}
-              <div className="relative aspect-video rounded-lg overflow-hidden bg-surface mb-2">
-                {bannerUrl && (
-                  <Image
-                    src={bannerUrl}
-                    alt={title}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform"
-                  />
-                )}
-                {/* Episode badge */}
-                <span className="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-[11px] px-1.5 py-0.5 rounded">
-                  Ep {latestEp}
-                </span>
-                {/* Play overlay on hover */}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                  <Play
-                    size={32}
-                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    fill="currentColor"
-                  />
-                </div>
-              </div>
-
-              {/* Channel row */}
-              <div className="flex gap-2 items-start">
-                {/* Circular poster thumbnail */}
-                <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 mt-0.5">
-                  {posterUrl && (
-                    <Image src={posterUrl} alt="" fill className="object-cover" />
+              <div key={item.id} className="group flex flex-col">
+                {/* Thumbnail (16:9) -> Player */}
+                <Link href={watchHref} className="relative aspect-video rounded-lg overflow-hidden bg-surface mb-3 border border-border/50 group-hover:border-accent-green/50 transition-all shadow-lg">
+                  {bannerUrl && (
+                    <Image
+                      src={bannerUrl}
+                      alt={title}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
                   )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-white line-clamp-1">
-                    Episode {latestEp}
-                  </p>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <p className="text-[12px] text-text-secondary line-clamp-1 flex-1">
-                      {title}
+                  {/* Episode badge */}
+                  <div className="absolute bottom-2 right-2 bg-black/90 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-md font-black border border-white/10 shadow-xl">
+                    EP {latestEp}
+                  </div>
+                </Link>
+
+                {/* Info row -> Details */}
+                <div className="flex gap-3 items-start">
+                  <Link href={targetHref} className="relative w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 group-hover:border-accent-green/30 transition-colors">
+                    {posterUrl && (
+                      <Image src={posterUrl} alt="" fill className="object-cover" />
+                    )}
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-bold text-white line-clamp-1 group-hover:text-accent-green transition-colors cursor-pointer">
+                      <Link href={targetHref}>Episode {latestEp}</Link>
                     </p>
-                    <span className="text-[10px] text-text-muted whitespace-nowrap">
-                      {index % 3 === 0 ? '4h ago' : index % 2 === 0 ? '1d ago' : '2h ago'}
-                    </span>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <Link href={targetHref} className="text-[12px] text-text-secondary line-clamp-1 flex-1 hover:text-white transition-colors">
+                        {title}
+                      </Link>
+                      <span className="text-[10px] text-text-muted whitespace-nowrap font-medium italic">
+                        {index % 3 === 0 ? '4h ago' : index % 2 === 0 ? '1d ago' : '2h ago'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </Link>
             );
           });
         })()}
+      </div>
+
+      {/* Loading Sentinel */}
+      <div ref={ref} className="py-12 flex justify-center">
+        {isFetchingNextPage && (
+          <div className="flex items-center gap-3 text-accent-green bg-accent-green/5 border border-accent-green/20 px-4 py-2 rounded-full animate-pulse">
+            <Loader2 className="animate-spin" size={18} />
+            <span className="text-sm font-bold tracking-tight">Syncing more entries...</span>
+          </div>
+        )}
       </div>
     </section>
   );

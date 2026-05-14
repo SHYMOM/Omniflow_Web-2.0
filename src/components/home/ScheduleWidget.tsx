@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Clock } from 'lucide-react';
-import { getSchedule } from '@/lib/api/jikan';
+import { getHybridSchedule } from '@/lib/api/hybrid';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -15,7 +15,7 @@ export default function ScheduleWidget() {
 
   const { data: scheduleItems, isLoading } = useQuery({
     queryKey: ['schedule', selectedDay],
-    queryFn: () => getSchedule(selectedDay),
+    queryFn: () => getHybridSchedule(selectedDay),
     staleTime: 30 * 60 * 1000,
   });
 

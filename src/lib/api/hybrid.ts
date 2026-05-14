@@ -1,5 +1,9 @@
-import { getTrendingAnime, getUpcomingAnime, searchAniList } from './anilist';
-import { getTopAnime, searchJikan } from './jikan';
+import { 
+  getTrendingAnime, getUpcomingAnime, searchAniList, getAnimeDetail, 
+  getAnimeByMalId, queryAniList, getAiringSchedule 
+} from './anilist';
+import type { AniListPageResponse } from '@/types/anilist';
+import { getSchedule, getTopAnime, searchJikan } from './jikan';
 import { getTrendingMovies, getTrendingTV, searchTMDB } from './tmdb';
 import type { AniListMedia } from '@/types/anilist';
 import type { JikanAnime } from '@/types/jikan';
@@ -8,6 +12,45 @@ import type { MediaItem } from '@/types/media';
 
 // Helper to normalize strings or empty values
 const safeStr = (s?: string | null) => s || '';
+
+/**
+ * Fetch hybrid schedule for a given day with Jikan/AniList fallback
+ */
+export async function getHybridSchedule(day: string): Promise<any[]> {
+  // Map day string to start/end timestamps for AniList
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayIndex = days.indexOf(day.toLowerCase());
+  
+  // Get start/end of that day in UTC
+  const now = new Date();
+  const today = now.getDay();
+  const diff = dayIndex - today;
+  const targetDate = new Date(now);
+  targetDate.setDate(now.getDate() + diff);
+  targetDate.setHours(0, 0, 0, 0);
+  const start = Math.floor(targetDate.getTime() / 1000);
+  const end = start + 86400;
+
+  try {
+    const jikan = await getSchedule(day);
+    if (jikan && jikan.length > 0) return jikan;
+  } catch (err) {
+    console.warn('Jikan schedule failed, falling back to AniList', err);
+  }
+
+  try {
+    const anilist = await getAiringSchedule(start, end);
+    return anilist.map(m => ({
+      mal_id: m.idMal || m.id,
+      title: m.title.english || m.title.romaji,
+      broadcast: m.broadcast,
+      episodes: m.airingEpisode
+    }));
+  } catch (err) {
+    console.error('AniList schedule fallback failed', err);
+    return [];
+  }
+}
 
 /**
  * Extract raw numeric ID from prefixed hybrid ID (e.g. "anilist-21" -> 21)
@@ -199,50 +242,41 @@ export function mapTMDBTVToMediaItem(tv: TMDBTVShow): MediaItem {
 /**
  * Fetch unified trending combining Anime, Movies, and TV Shows
  */
-export async function getHybridTrending(page = 1): Promise<MediaItem[]> {
+export async function getHybridTrending(hideAdult = true): Promise<MediaItem[]> {
   const items: MediaItem[] = [];
-
-  // Try fetching AniList Trending Anime
   try {
-    const query = `
-      query ($perPage: Int, $page: Int) {
-        Page(perPage: $perPage, page: $page) {
-          media(type: ANIME, sort: TRENDING_DESC) {
-            id idMal title { romaji english native }
-            description(asHtml: false)
-            coverImage { extraLarge large } bannerImage
-            trailer { id site }
-            format status season seasonYear episodes duration
-            averageScore meanScore genres
-            studios(isMain: true) { nodes { name } }
-            nextAiringEpisode { airingAt episode }
-          }
-        }
-      }`;
-    const res = await queryAniList<AniListPageResponse>(query, { perPage: 12, page });
-    items.push(...res.data.Page.media.map(mapAniListToMediaItem));
-  } catch (err) {
-    console.warn('AniList getTrendingAnime failed, falling back to Jikan getTopAnime', err);
-    try {
-      const jikan = await getTopAnime('airing', page);
-      items.push(...(jikan.data?.slice(0, 12).map(mapJikanToMediaItem) || []));
-    } catch (jikanErr) {
-      console.error('Jikan fallback also failed', jikanErr);
-    }
-  }
-
-  // Fetch TMDB Trending Movies & TV
-  try {
-    const [movies, tv] = await Promise.allSettled([
-      getTrendingMovies('week', page),
-      getTrendingTV('week', page)
+    // Parallel fetch from multiple sources
+    const [anime, movies, tv] = await Promise.allSettled([
+      getTrendingAnime(10, 1, hideAdult),
+      getTrendingMovies('week', 1),
+      getTrendingTV('week', 1)
     ]);
 
+    if (anime.status === 'fulfilled') {
+      items.push(...anime.value.map(mapAniListToMediaItem));
+    }
+    
+    // Fetch TMDB Trending Movies & TV
     if (movies.status === 'fulfilled') {
-      items.push(...movies.value.slice(0, 10).map(mapTMDBMovieToMediaItem));
+      const movieItems = await Promise.all(movies.value.slice(0, 10).map(async (m) => {
+        const item = mapTMDBMovieToMediaItem(m);
+        // Only fetch trailers for the first 5 to avoid heavy API load
+        if (movies.value.indexOf(m) < 5) {
+          item.trailerYoutubeId = await getMovieTrailerKey(m.id) || undefined;
+        }
+        return item;
+      }));
+      items.push(...movieItems);
     }
     if (tv.status === 'fulfilled') {
-      items.push(...tv.value.slice(0, 10).map(mapTMDBTVToMediaItem));
+      const tvItems = await Promise.all(tv.value.slice(0, 10).map(async (t) => {
+        const item = mapTMDBTVToMediaItem(t);
+        if (tv.value.indexOf(t) < 5) {
+          item.trailerYoutubeId = await getTVTrailerKey(t.id) || undefined;
+        }
+        return item;
+      }));
+      items.push(...tvItems);
     }
   } catch (err) {
     console.error('TMDB fetching failed in hybrid wrapper', err);
@@ -257,21 +291,99 @@ export async function getHybridTrending(page = 1): Promise<MediaItem[]> {
   });
   
   // Shuffle for variety, but seed with page so it's consistent during scroll
-  // For now just return as is or shuffle
-  return deduped;
+  return deduped.sort(() => Math.random() - 0.5);
+}
+
+/**
+ * Fetch real episode lists for Anime (Jikan with AniList fallback) or TMDB
+ */
+export async function getMediaEpisodes(id: string, type: string, season = 1) {
+  const numericId = extractId(id);
+
+  if (type === 'anime') {
+    // Try Jikan first
+    try {
+      // 1. Fetch base episode data
+      const baseRes = await (await fetch(`/api/jikan/anime/${numericId}/episodes`)).json();
+      const baseEps = baseRes.data || [];
+
+      // 2. Fetch episode videos (which contain thumbnails)
+      const videoRes = await (await fetch(`/api/jikan/anime/${numericId}/episodes/videos`)).json();
+      const videoEps = videoRes.data || [];
+
+      // 3. Merge thumbnails into base data
+      if (baseEps.length > 0) {
+        return baseEps.map((ep: any) => {
+          // Find matching video for thumbnail
+          const videoMatch = videoEps.find((v: any) => v.mal_id === ep.mal_id);
+          return {
+            number: ep.mal_id,
+            title: ep.title || `Episode ${ep.mal_id}`,
+            thumbnail: videoMatch?.images?.jpg?.image_url || videoMatch?.images?.webp?.image_url || null,
+            aired: ep.aired || null,
+            filler: ep.filler,
+            recap: ep.recap
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('Jikan episodes failed, falling back to AniList', err);
+    }
+
+    // Fallback to AniList (limited info)
+    try {
+      const media = await getAnimeDetail(numericId);
+      if (media && media.episodes) {
+        return Array.from({ length: media.episodes }, (_, i) => ({
+          number: i + 1,
+          title: `Episode ${i + 1}`,
+          thumbnail: media.bannerImage || media.coverImage.extraLarge,
+          aired: null
+        }));
+      }
+    } catch (err) {
+      console.error('AniList episode fallback failed', err);
+    }
+  } else if (type === 'tv' || type === 'movie') {
+    // TMDB implementation
+    try {
+      if (type === 'tv') {
+        const res = await (await fetch(`/api/tmdb/tv/${numericId}/season/${season}`)).json();
+        return res.episodes.map((ep: any) => ({
+          number: ep.episode_number,
+          title: ep.name || `Episode ${ep.episode_number}`,
+          thumbnail: ep.still_path ? `https://image.tmdb.org/t/p/w300${ep.still_path}` : null,
+          aired: ep.air_date,
+          overview: ep.overview
+        }));
+      } else {
+        // Movies have only one "episode"
+        return [{
+          number: 1,
+          title: 'Full Movie',
+          thumbnail: null,
+          aired: null
+        }];
+      }
+    } catch (err) {
+      console.error('TMDB episode fetch failed', err);
+    }
+  }
+
+  return [];
 }
 
 /**
  * Search across AniList (fallback to Jikan) and TMDB multi search
  */
-export async function searchHybrid(query: string, page = 1): Promise<MediaItem[]> {
+export async function searchHybrid(query: string, page = 1, hideAdult = true): Promise<MediaItem[]> {
   const items: MediaItem[] = [];
   if (!query || query.length < 2) return items;
 
   // Concurrent search across all providers with timeouts/error handling
   const results = await Promise.allSettled([
-    searchAniList(query, 'ANIME', 15, page),
-    searchAniList(query, 'MANGA', 10, page),
+    searchAniList(query, 'ANIME', 15, page, hideAdult),
+    searchAniList(query, 'MANGA', 10, page, hideAdult),
     searchTMDB(query, 'multi', page)
   ]);
 
@@ -313,4 +425,38 @@ export async function searchHybrid(query: string, page = 1): Promise<MediaItem[]
       return true;
     })
     .sort((a, b) => (b.score || 0) - (a.score || 0));
+}
+/**
+ * Fetch hybrid recommendations
+ */
+export async function getHybridRecommendations(id: string, type: string): Promise<MediaItem[]> {
+  const numericId = extractId(id);
+  
+  if (type === 'anime') {
+    try {
+      const media = await getAnimeDetail(numericId);
+      return media.recommendations?.nodes?.map(n => n.mediaRecommendation).filter(Boolean).map(r => ({
+        id: `anilist-${r.id}`,
+        title: r.title.english || r.title.romaji || 'Unknown',
+        posterUrl: r.coverImage.large,
+        type: 'anime' as any,
+        formatLabel: r.format,
+        year: r.seasonYear
+      })) || [];
+    } catch (err) {
+      console.error('Hybrid recommendations failed for anime', err);
+    }
+  } else if (type === 'movie' || type === 'tv') {
+    try {
+      const res = await (await fetch(`/api/tmdb/${type}/${numericId}/recommendations`)).json();
+      return (res.results || []).slice(0, 12).map(item => {
+        if (type === 'movie') return mapTMDBMovieToMediaItem(item);
+        return mapTMDBTVToMediaItem(item);
+      });
+    } catch (err) {
+      console.error('Hybrid recommendations failed for TMDB', err);
+    }
+  }
+  
+  return [];
 }

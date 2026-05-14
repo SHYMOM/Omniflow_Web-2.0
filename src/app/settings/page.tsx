@@ -117,6 +117,70 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {activeTab === 'Interface' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <section>
+                <h3 className="text-lg font-bold text-white mb-4">Appearance</h3>
+                <div className="space-y-4">
+                  <SettingToggle 
+                    label="Theme Mode" 
+                    description="Switch between dark, light, and system themes" 
+                    value="Midnight Dark" 
+                    icon={Monitor}
+                  />
+                  <div className="p-4 rounded-xl border border-border bg-void/30">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Primary Brand Color</h4>
+                        <p className="text-xs text-text-muted">Choose your signature accent color</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {['#A8FF35', '#FF357A', '#35A8FF', '#FF9F35', '#B035FF'].map(color => (
+                        <button 
+                          key={color}
+                          style={{ backgroundColor: color }}
+                          className={cn(
+                            "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
+                            color === '#A8FF35' ? "border-white shadow-[0_0_10px_rgba(168,255,53,0.5)]" : "border-transparent"
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeTab === 'Privacy' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <section>
+                <h3 className="text-lg font-bold text-white mb-4">Security & Safety</h3>
+                <div className="space-y-4">
+                  <SettingSwitch 
+                    label="Hide Adult Content" 
+                    description="Filter out mature/18+ media from all browsing lists and search results"
+                    checked={settings.hideAdult}
+                    onChange={(val) => updateSettings({ hideAdult: val })}
+                  />
+                  <SettingSwitch 
+                    label="Incognito Mode" 
+                    description="Don't record watch history while this is active"
+                    checked={false}
+                    onChange={() => {}}
+                  />
+                  <SettingToggle 
+                    label="Two-Factor Authentication" 
+                    description="Add an extra layer of security to your account" 
+                    value="Disabled" 
+                    icon={ShieldCheck}
+                  />
+                </div>
+              </section>
+            </div>
+          )}
+
           {activeTab === 'Account' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <section>

@@ -7,25 +7,29 @@ import { ArrowRight } from 'lucide-react';
 import Tabs from '@/components/ui/Tabs';
 import MediaGrid from '@/components/media/MediaGrid';
 import { getThisSeasonAnime, getPopularAnime, getTopRatedAnime } from '@/lib/api/anilist';
+import { useUserStore } from '@/store/userStore';
 
 const TAB_LIST = ['This Season', 'All Time Popular', 'Top Rated'];
 
 export default function TabbedGrid() {
   const [activeTab, setActiveTab] = useState(TAB_LIST[0]);
 
+  const { settings } = useUserStore();
+  const hideAdult = settings.hideAdult;
+
   const { data: seasonData, isLoading: seasonLoading } = useQuery({
-    queryKey: ['anime', 'this-season'],
-    queryFn: () => getThisSeasonAnime(18),
+    queryKey: ['anime', 'this-season', hideAdult],
+    queryFn: () => getThisSeasonAnime(18, 1, hideAdult),
   });
 
   const { data: popularData, isLoading: popularLoading } = useQuery({
-    queryKey: ['anime', 'popular'],
-    queryFn: () => getPopularAnime(18),
+    queryKey: ['anime', 'popular', hideAdult],
+    queryFn: () => getPopularAnime(18, 1, hideAdult),
   });
 
   const { data: topRatedData, isLoading: topRatedLoading } = useQuery({
-    queryKey: ['anime', 'top-rated'],
-    queryFn: () => getTopRatedAnime(18),
+    queryKey: ['anime', 'top-rated', hideAdult],
+    queryFn: () => getTopRatedAnime(18, 1, hideAdult),
   });
 
   const currentData = activeTab === TAB_LIST[0] ? seasonData

@@ -7,7 +7,7 @@ const COMMENTS = [
   {
     id: 1,
     user: 'Kage_Sama',
-    avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Kage_Sama',
+    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Kage_Sama',
     text: 'The animation quality in this latest episode is absolutely breathtaking. Mappa really outdid themselves!',
     targetTitle: 'Jujutsu Kaisen Season 2',
     time: '5m ago',
@@ -16,7 +16,7 @@ const COMMENTS = [
   {
     id: 2,
     user: 'Sakura_Petal',
-    avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Sakura_Petal',
+    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Sakura_Petal',
     text: 'That plot twist at the end left me completely speechless. Cannot wait for the next broadcast chapter.',
     targetTitle: 'Attack on Titan: Final Chapters',
     time: '24m ago',
@@ -25,7 +25,7 @@ const COMMENTS = [
   {
     id: 3,
     user: 'OtakuGamer',
-    avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=OtakuGamer',
+    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=OtakuGamer',
     text: 'Highly recommend watching this in crisp 1080p audio. The sound design is flawless.',
     targetTitle: 'Chainsaw Man',
     time: '1h ago',

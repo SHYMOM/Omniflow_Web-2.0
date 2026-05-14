@@ -4,9 +4,10 @@ import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
-import { searchAniList } from '@/lib/api/anilist';
+import { searchHybrid } from '@/lib/api/hybrid';
 import MediaGrid from '@/components/media/MediaGrid';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import { useUserStore } from '@/store/userStore';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 function SearchContent() {
@@ -14,10 +15,12 @@ function SearchContent() {
   const initialQuery = searchParams.get('q') || '';
   const [query, setQuery] = useState(initialQuery);
   const debouncedQuery = useDebounce(query, 300);
+  const { settings } = useUserStore();
+  const hideAdult = settings.hideAdult;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['search', debouncedQuery],
-    queryFn: () => searchAniList(debouncedQuery, 'ANIME', 24),
+  const { data: searchResults, isLoading } = useQuery({
+    queryKey: ['search', debouncedQuery, hideAdult],
+    queryFn: () => searchHybrid(debouncedQuery, 1, hideAdult),
     enabled: debouncedQuery.length > 1,
   });
 
@@ -38,8 +41,8 @@ function SearchContent() {
           <p className="text-sm text-text-secondary mb-4">
             {isLoading ? 'Searching...' : `Showing results for "${debouncedQuery}"`}
           </p>
-          <MediaGrid items={data?.media || []} loading={isLoading} skeletonCount={12} />
-          {!isLoading && data?.media?.length === 0 && (
+          <MediaGrid items={searchResults || []} loading={isLoading} skeletonCount={12} />
+          {!isLoading && searchResults?.length === 0 && (
             <p className="text-center text-text-muted py-12">No results found for &ldquo;{debouncedQuery}&rdquo;</p>
           )}
         </>

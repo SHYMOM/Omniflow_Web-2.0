@@ -7,13 +7,14 @@ import { getAnimeDetail, getAnimeByMalId } from '@/lib/api/anilist';
 import { extractId, mapAniListToMediaItem } from '@/lib/api/hybrid';
 import DetailHeader from '@/components/details/DetailHeader';
 import OverviewTab from '@/components/details/OverviewTab';
+import CharactersTab from '@/components/details/CharactersTab';
 import EpisodesTab from '@/components/details/EpisodesTab';
 import RelatedTab from '@/components/details/RelatedTab';
 import MoreLikeThisTab from '@/components/details/MoreLikeThisTab';
 import Tabs from '@/components/ui/Tabs';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-const TABS = ['Overview', 'Episodes', 'Related', 'More Like This'];
+const TABS = ['Overview', 'Episodes', 'Characters', 'Related', 'More Like This'];
 
 export default function AnimeDetailPage() {
   const params = useParams();
@@ -58,9 +59,10 @@ export default function AnimeDetailPage() {
         <Tabs tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} className="mb-6" />
 
         {activeTab === 'Overview' && <OverviewTab media={mediaItem} />}
-        {activeTab === 'Episodes' && <EpisodesTab media={media} />}
-        {activeTab === 'Related' && <RelatedTab media={media} />}
-        {activeTab === 'More Like This' && <MoreLikeThisTab media={media} />}
+        {activeTab === 'Episodes' && <EpisodesTab media={mediaItem} rawMedia={media} />}
+        {activeTab === 'Characters' && <CharactersTab media={mediaItem} />}
+        {activeTab === 'Related' && <RelatedTab media={mediaItem} />}
+        {activeTab === 'More Like This' && <MoreLikeThisTab media={mediaItem} />}
       </div>
     </div>
   );

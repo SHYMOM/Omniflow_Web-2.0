@@ -115,22 +115,35 @@ export default function HistoryPage() {
               )}
             </div>
           ) : (
-            Object.entries(grouped).map(([date, entries]) => (
-              <div key={date} className="mb-6">
-                <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3 pb-1 border-b border-border/40">
-                  {date}
-                </h3>
-                <div className="space-y-2.5">
-                    {entries.map((entry) => {
-                      const safeMediaTitle = typeof entry.mediaTitle === 'string' ? entry.mediaTitle : ((entry.mediaTitle as any)?.english || (entry.mediaTitle as any)?.romaji || 'Unknown Series');
-                      const safeEpTitle = typeof entry.episodeTitle === 'string' ? entry.episodeTitle : 'Episode ' + entry.episodeNumber;
+            Object.entries(grouped).map(([date, entries]) => {
+              // Deduplicate entries for the same media+episode on the same day
+              const seen = new Set<string>();
+              const uniqueEntries = entries.filter(entry => {
+                const key = `${entry.mediaId}-${entry.episodeNumber}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              });
+
+              return (
+                <div key={date} className="mb-6">
+                  <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3 pb-1 border-b border-border/40">
+                    {date}
+                  </h3>
+                  <div className="space-y-2.5">
+                    {uniqueEntries.map((entry) => {
+                      const safeMediaTitle = typeof entry.mediaTitle === 'string' 
+                        ? entry.mediaTitle 
+                        : ((entry.mediaTitle as any)?.english || (entry.mediaTitle as any)?.romaji || 'Unknown Series');
+                      const safeEpTitle = typeof entry.episodeTitle === 'string' 
+                        ? entry.episodeTitle 
+                        : 'Episode ' + entry.episodeNumber;
 
                       return (
                         <div
                           key={`${entry.mediaId}-${entry.episodeNumber}-${entry.watchedAt}`}
                           className="flex items-center gap-3 bg-surface/40 hover:bg-surface border border-border/40 rounded-lg p-2.5 group transition-colors"
                         >
-                          {/* Video clip thumbnail wrapper */}
                           <Link
                             href={`/watch?id=${entry.mediaId}&type=${entry.mediaType}&ep=${entry.episodeNumber}`}
                             className="relative w-[140px] sm:w-[160px] aspect-video rounded-md overflow-hidden bg-void shrink-0 border border-white/5 group-hover:border-accent-green/40 transition-colors"
@@ -139,14 +152,11 @@ export default function HistoryPage() {
                               <Image src={entry.thumbnailUrl} alt={safeMediaTitle} fill className="object-cover" />
                             )}
                             <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
-                            
-                            {/* Stream progress bar tracking track */}
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
                               <div className="h-full bg-accent-green" style={{ width: `${Math.min(100, Math.max(5, (entry.progress || 0) * 100))}%` }} />
                             </div>
                           </Link>
 
-                          {/* Content strings */}
                           <div className="flex-1 min-w-0">
                             <Link
                               href={`/watch?id=${entry.mediaId}&type=${entry.mediaType}&ep=${entry.episodeNumber}`}
@@ -162,19 +172,20 @@ export default function HistoryPage() {
                             </p>
                           </div>
 
-                      {/* Item-level granular deletion action */}
-                      <button
-                        onClick={() => removeFromHistory(entry.mediaId, entry.episodeNumber)}
-                        className="p-2 text-text-muted hover:text-accent-red rounded-md hover:bg-surface-hover transition-colors cursor-pointer"
-                        title="Remove specific playback entry"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
+                          <button
+                            onClick={() => removeFromHistory(entry.mediaId, entry.episodeNumber)}
+                            className="p-2 text-text-muted hover:text-accent-red rounded-md hover:bg-surface-hover transition-colors cursor-pointer"
+                            title="Remove specific playback entry"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

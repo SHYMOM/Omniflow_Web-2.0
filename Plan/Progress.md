@@ -121,3 +121,17 @@
 - [ ] Implement infinite scroll for discovery and trending pages
 - [ ] Fetch real episode thumbnails for all media providers
 - [ ] Add "Continue Watching" row to homepage
+
+## ✅ Session 17 — QA, UI Polishing & Performance (COMPLETE)
+- [x] **Full UI/UX Audit & Verification**
+  - [x] Verified HeroBanner autoplay (controlled via Settings)
+  - [x] Optimized `HoverCard` responsiveness (Reduced delay to 150ms + Portal implementation)
+  - [x] Fixed RecentlyUpdated `targetHref` ReferenceError
+  - [x] Fixed watch/page.tsx duplicate `availableServers` declaration
+  - [x] Improved Click-box stability for media cards in search results
+- [x] **Settings Page Validation**
+  - [x] Persistent playback toggles (Autoplay Trailers, Autoplay Next)
+  - [x] High-fidelity glassmorphic design matching screenshots
+- [x] **Hybrid Data Integrity**
+  - [x] Verified AniList/TMDB fallback for recommendations
+  - [x] Unified ID prefixing confirmed across all navigation points

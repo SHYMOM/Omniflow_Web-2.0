@@ -1,8 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { getUpcomingAnime, getRecentlyUpdatedAnime } from '@/lib/api/anilist';
+import { getTopUpcomingAnime } from '@/lib/api/anilist';
 import { getHybridTrending } from '@/lib/api/hybrid';
+import { useUserStore } from '@/store/userStore';
 import HeroBanner from '@/components/home/HeroBanner';
 import ContinueWatching from '@/components/home/ContinueWatching';
 import TrendingRow from '@/components/home/TrendingRow';
@@ -13,20 +14,19 @@ import TopUpcoming from '@/components/home/TopUpcoming';
 import RecentlyUpdated from '@/components/home/RecentlyUpdated';
 
 export default function HomePage() {
+  const { settings } = useUserStore();
+  const hideAdult = settings.hideAdult;
+
   const { data: trendingData, isLoading: trendingLoading } = useQuery({
-    queryKey: ['hybrid', 'trending'],
-    queryFn: () => getHybridTrending(),
+    queryKey: ['hybrid', 'trending', hideAdult],
+    queryFn: () => getHybridTrending(hideAdult),
   });
 
   const { data: upcomingData } = useQuery({
-    queryKey: ['anime', 'upcoming'],
-    queryFn: () => getUpcomingAnime(6),
+    queryKey: ['anime', 'upcoming', hideAdult],
+    queryFn: () => getTopUpcomingAnime(6, 1, hideAdult),
   });
 
-  const { data: recentData } = useQuery({
-    queryKey: ['anime', 'recently-updated'],
-    queryFn: () => getRecentlyUpdatedAnime(20),
-  });
 
   return (
     <div className="min-h-screen">
@@ -59,7 +59,7 @@ export default function HomePage() {
       <TopUpcoming items={upcomingData || []} />
 
       {/* Recently Updated */}
-      <RecentlyUpdated items={recentData || []} />
+      <RecentlyUpdated />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import Topbar from "@/components/layout/Topbar";
 import Sidebar from "@/components/layout/Sidebar";
 import MobileNav from "@/components/layout/MobileNav";
 import AuthModal from "@/components/auth/AuthModal";
+import QuickSearch from "@/components/layout/QuickSearch";
 import "./globals.css";
 
 const inter = Inter({
@@ -41,11 +42,12 @@ export default function RootLayout({
             <Topbar />
             <Sidebar />
           </Suspense>
-          <main className="pt-14 pb-16 md:pb-0 min-h-screen">
+          <main className="pb-16 md:pb-0 min-h-screen">
             {children}
           </main>
           <MobileNav />
           <AuthModal />
+          <QuickSearch />
           <Toaster
             position="bottom-right"
             toastOptions={{

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Star } from 'lucide-react';
@@ -41,7 +42,7 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
 
   const handleMouseEnter = useCallback(() => {
     if (!showHoverCard) return;
-    timeoutRef.current = setTimeout(() => setShowPopover(true), 350);
+    timeoutRef.current = setTimeout(() => setShowPopover(true), 600);
   }, [showHoverCard]);
 
   const handleMouseLeave = useCallback(() => {
@@ -99,9 +100,11 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
       </Link>
 
       {/* Edge-aware Hover Card Popover */}
-      {showHoverCard && showPopover && (
-        <HoverCard media={item} parentRef={cardRef} />
-      )}
+      <AnimatePresence>
+        {showHoverCard && showPopover && (
+          <HoverCard media={item} parentRef={cardRef} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

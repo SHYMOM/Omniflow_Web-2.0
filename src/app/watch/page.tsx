@@ -10,7 +10,8 @@ import {
   Share2, Download, Flag, MessageSquare, ChevronDown, ArrowUp 
 } from 'lucide-react';
 import { getAnimeDetail } from '@/lib/api/anilist';
-import { extractId } from '@/lib/api/hybrid';
+import { getMovieDetails, getTVDetails } from '@/lib/api/tmdb';
+import { getMediaEpisodes, extractId, getHybridRecommendations } from '@/lib/api/hybrid';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUserStore } from '@/store/userStore';
 import VideoPlayer from '@/components/player/VideoPlayer';
@@ -26,6 +27,7 @@ function WatchContent() {
   const mediaType = searchParams.get('type') || 'anime';
   const epNum = Number(searchParams.get('ep') || '1');
 
+  const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
   const { activeServerId, setActiveServer } = usePlayerStore();
   const { addToHistory } = useUserStore();
 
@@ -36,38 +38,63 @@ function WatchContent() {
   const [commentInput, setCommentInput] = useState('');
   const [isSpoiler, setIsSpoiler] = useState(false);
 
-  // Fetch actual media detail or use resilient fallback strings
+  // Unified fetch for any media type
   const { data: media, isLoading } = useQuery({
-    queryKey: ['anime', mediaId],
-    queryFn: () => getAnimeDetail(mediaId),
-    enabled: !!mediaId && mediaType === 'anime',
+    queryKey: ['media', mediaType, mediaId],
+    queryFn: async () => {
+      if (mediaType === 'anime') return getAnimeDetail(mediaId);
+      if (mediaType === 'movie') return getMovieDetails(Number(mediaId));
+      if (mediaType === 'tv') return getTVDetails(Number(mediaId));
+      return null;
+    },
+    enabled: !!mediaId,
   });
+
+  // Fetch recommendations
+  useEffect(() => {
+    if (!rawId) return;
+    getHybridRecommendations(rawId, mediaType).then(setRecommendations);
+  }, [rawId, mediaType]);
 
   // Fetch server configs for the popup modal
   useEffect(() => {
     fetch('/servers.json').then(r => r.json()).then(setServersList).catch(() => {});
   }, []);
 
-  const title = media?.title.english || media?.title.romaji || "I'm Luffy! The Man Who's Gonna Be King of the Pirates!";
-  const seriesTitle = media?.title.romaji || 'ONE PIECE';
-  const malId = media?.idMal || 21;
-  const bannerImage = media?.bannerImage || 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg';
+  // Normalization logic for different API responses
+  const title = mediaType === 'anime' 
+    ? (media as any)?.title?.english || (media as any)?.title?.romaji 
+    : (media as any)?.title || (media as any)?.name;
+  
+  const seriesTitle = mediaType === 'anime' 
+    ? (media as any)?.title?.romaji 
+    : (media as any)?.title || (media as any)?.name;
+
+  const malId = (media as any)?.idMal || 0;
+  const bannerImage = mediaType === 'anime'
+    ? (media as any)?.bannerImage || (media as any)?.coverImage?.extraLarge
+    : `https://image.tmdb.org/t/p/original${(media as any)?.backdrop_path}`;
+  
+  const posterImage = mediaType === 'anime'
+    ? (media as any)?.coverImage?.large
+    : `https://image.tmdb.org/t/p/w300${(media as any)?.poster_path}`;
 
   // Automatically record view state to portable user history store
   useEffect(() => {
+    if (!media) return;
     addToHistory({
       mediaId: rawId.includes('-') ? rawId : (mediaType === 'anime' ? `anilist-${rawId}` : `tmdb-${rawId}`),
       mediaType: mediaType as 'anime' | 'movie' | 'tv',
       episodeNumber: epNum,
-      episodeTitle: title,
-      mediaTitle: seriesTitle,
+      episodeTitle: title || 'Streaming',
+      mediaTitle: seriesTitle || 'Unknown',
       watchedAt: new Date().toISOString(),
       progress: 0.15,
       thumbnailUrl: bannerImage,
-      posterUrl: bannerImage,
-      duration: 1440,
+      posterUrl: posterImage,
+      duration: (media as any)?.duration || 24,
     });
-  }, [mediaId, mediaType, epNum, title, seriesTitle, bannerImage, addToHistory]);
+  }, [media, mediaType, epNum, title, seriesTitle, bannerImage, posterImage, addToHistory, rawId]);
 
   if (isLoading) {
     return (
@@ -136,7 +163,7 @@ function WatchContent() {
             <div className="flex items-center gap-3">
               <div className="relative w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 border border-white/10">
                 <Image
-                  src="https://s4.anilist.co/file/anilistcdn/media/anime/cover/small/bx21-YCDoj1EkAxFn.jpg"
+                  src={posterImage}
                   alt={seriesTitle}
                   fill
                   className="object-cover"
@@ -144,7 +171,7 @@ function WatchContent() {
               </div>
               <div>
                 <p className="text-sm font-bold text-white tracking-wide">{seriesTitle}</p>
-                <p className="text-xs text-text-muted">7.2K users</p>
+                <p className="text-xs text-text-muted">{(media as any)?.popularity || (media as any)?.averageScore || '7.2K'} users</p>
               </div>
             </div>
 
@@ -214,6 +241,33 @@ function WatchContent() {
             <span className="block text-[10px] font-bold text-text-muted group-hover:text-white transition-colors mt-2 text-right uppercase tracking-wider">
               {isDescriptionExpanded ? 'Show less' : 'Click to expand description'}
             </span>
+          </div>
+
+          {/* More Like This / Recommendations */}
+          <div className="pt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-white uppercase tracking-wider">More Like This</h3>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {recommendations.length > 0 ? (
+                recommendations.map((rec) => (
+                  <Link key={rec.id} href={`/${rec.type}/${rec.id}`} className="group">
+                    <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-2 border border-border/30 group-hover:border-accent-green/50 transition-all">
+                      <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" />
+                    </div>
+                    <p className="text-[10px] text-text-muted uppercase font-bold tracking-tighter mb-0.5">{rec.formatLabel}</p>
+                    <p className="text-xs text-white font-medium line-clamp-1 group-hover:text-accent-green transition-colors">{rec.title}</p>
+                  </Link>
+                ))
+              ) : (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className="aspect-[3/4] rounded-lg skeleton mb-2" />
+                    <div className="h-3 w-1/2 skeleton rounded" />
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* 68 Comments Discussion Ecosystem */}
@@ -342,8 +396,7 @@ function WatchContent() {
             mediaId={mediaId}
             mediaType={mediaType}
             currentEp={epNum}
-            malId={malId}
-            totalEpisodes={media?.episodes || 0}
+            totalEpisodes={mediaType === 'anime' ? (media as any)?.episodes : (media as any)?.number_of_episodes || 1}
             title={title}
           />
         </div>

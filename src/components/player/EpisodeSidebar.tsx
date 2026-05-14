@@ -1,40 +1,28 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Search, RefreshCw, ArrowUpDown, LayoutList, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
+import { getMediaEpisodes } from '@/lib/api/hybrid';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+
+interface Episode {
+  number: number;
+  title: string;
+  thumbnail: string | null;
+  aired?: string | null;
+  filler?: boolean;
+}
 
 interface EpisodeSidebarProps {
-  mediaId: number;
+  mediaId: string;
   mediaType: string;
   currentEp: number;
-  malId: number;
   totalEpisodes: number;
   title: string;
 }
-
-// Mock episode dataset generator to populate premium thumbnail interfaces
-const EPISODE_TITLES = [
-  "I'm Luffy! The Man Who's Gonna Be King of the Pirates!",
-  "Enter the Great Swordsman! Pirate Hunter Roronoa Zoro!",
-  "Morgan versus Luffy! Who's the Mysterious Beautiful Girl?",
-  "Luffy's Past! The Red-Haired Shanks Appears!",
-  "A Terrifying Mysterious Power! Captain Buggy the Clown Pirate!",
-  "Desperate Situation! Beast Tamer Mohji vs. Luffy!",
-  "Grand Clash! Swordsman Zoro vs. Acrobat Cabaji!",
-  "Who is the Victor? Devil Fruit Power Showdown!",
-  "The Honorable Liar? Captain Usopp!",
-  "The Weirdest Guy Ever! Jango the Hypnotist!",
-];
-
-const MOCK_THUMBS = [
-  'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg',
-  'https://s4.anilist.co/file/anilistcdn/media/anime/banner/101922-YfZhKBUDDS6L.jpg',
-  'https://s4.anilist.co/file/anilistcdn/media/anime/banner/113415-jQBSkxWAAk83.jpg',
-  'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1535-1x11vWqQWv68.jpg',
-];
 
 const MORE_LIKE_THIS = [
   {
@@ -82,38 +70,41 @@ const MORE_LIKE_THIS = [
 export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpisodes, title }: EpisodeSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDesc, setIsDesc] = useState(false);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Generate robust episode array up to total or 24 default
-  const episodesList = useMemo(() => {
-    const count = totalEpisodes > 0 ? totalEpisodes : 24;
-    return Array.from({ length: count }, (_, i) => {
-      const epNum = i + 1;
-      const epTitle = EPISODE_TITLES[i % EPISODE_TITLES.length];
-      const thumb = MOCK_THUMBS[i % MOCK_THUMBS.length];
-      // Generate deterministic mock views and years
-      const views = Math.floor(480 - (i * 12)) + 'K views';
-      const yearsAgo = Math.min(27, Math.max(1, 27 - Math.floor(i / 40))) + ' years ago';
-      return { epNum, epTitle, thumb, views, yearsAgo };
-    });
-  }, [totalEpisodes]);
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const data = await getMediaEpisodes(mediaId, mediaType);
+        setEpisodes(data);
+      } catch (err) {
+        console.error('Failed to load episodes', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [mediaId, mediaType]);
 
   // Apply search query filter and order reverse toggle
   const filteredEpisodes = useMemo(() => {
-    let list = episodesList;
+    let list = episodes;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         ep =>
-          ep.epTitle.toLowerCase().includes(q) ||
-          `episode ${ep.epNum}`.includes(q) ||
-          `${ep.epNum}` === q
+          ep.title.toLowerCase().includes(q) ||
+          `episode ${ep.number}`.includes(q) ||
+          `${ep.number}` === q
       );
     }
     return isDesc ? [...list].reverse() : list;
-  }, [episodesList, searchQuery, isDesc]);
+  }, [episodes, searchQuery, isDesc]);
 
   // Compute Up Next target title string
-  const nextEpObj = episodesList.find(e => e.epNum === currentEp + 1) || episodesList[0];
+  const nextEpObj = episodes.find(e => e.number === currentEp + 1) || episodes[0];
 
   return (
     <div className="w-full lg:w-[360px] shrink-0 space-y-4">
@@ -176,13 +167,17 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
 
         {/* Episode Stream Scroller */}
         <div className="max-h-[380px] overflow-y-auto hide-scrollbar divide-y divide-border/30">
-          {filteredEpisodes.map((ep) => {
-            const isPlaying = ep.epNum === currentEp;
+          {loading ? (
+            <div className="py-10 flex justify-center">
+              <LoadingSpinner size={24} />
+            </div>
+          ) : filteredEpisodes.map((ep) => {
+            const isPlaying = ep.number === currentEp;
 
             return (
               <Link
-                key={ep.epNum}
-                href={`/watch?id=${mediaId}&type=${mediaType}&ep=${ep.epNum}`}
+                key={ep.number}
+                href={`/watch?id=${mediaId}&type=${mediaType}&ep=${ep.number}`}
                 className={cn(
                   'flex gap-3 p-2.5 transition-all items-start group relative',
                   isPlaying
@@ -192,13 +187,24 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
               >
                 {/* Thumbnail image with embedded Ep tag capsule */}
                 <div className="relative w-[110px] aspect-video rounded-md overflow-hidden bg-surface shrink-0 border border-white/5 group-hover:border-accent-green/40 transition-colors">
-                  <Image src={ep.thumb} alt={ep.epTitle} fill className="object-cover" />
+                  {ep.thumbnail ? (
+                    <Image src={ep.thumbnail} alt={ep.title} fill className="object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-surface-hover text-[10px] text-text-muted font-bold uppercase">
+                      No Preview
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
 
                   {/* Absolute Bottom-Left Tag Capsule */}
                   <span className="absolute bottom-1 left-1 bg-void/90 backdrop-blur-sm text-white font-bold text-[10px] px-1.5 py-0.5 rounded border border-white/10">
-                    Ep {ep.epNum}
+                    Ep {ep.number}
                   </span>
+                  {ep.filler && (
+                    <span className="absolute top-1 right-1 bg-yellow-500 text-black font-bold text-[8px] px-1 rounded uppercase">
+                      Filler
+                    </span>
+                  )}
                 </div>
 
                 {/* Right text stack */}
@@ -207,17 +213,17 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
                     "text-xs font-bold line-clamp-2 leading-snug transition-colors",
                     isPlaying ? "text-accent-green" : "text-white group-hover:text-accent-green"
                   )}>
-                    {ep.epTitle}
+                    {ep.title}
                   </p>
                   <p className="text-[10px] text-text-muted mt-1 font-medium">
-                    {ep.views} • {ep.yearsAgo}
+                    {ep.aired ? new Date(ep.aired).toLocaleDateString() : 'Date TBD'}
                   </p>
                 </div>
               </Link>
             );
           })}
 
-          {filteredEpisodes.length === 0 && (
+          {!loading && filteredEpisodes.length === 0 && (
             <p className="text-center text-xs text-text-muted py-10">No broadcast entries match query</p>
           )}
         </div>
