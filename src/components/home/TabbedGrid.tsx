@@ -29,11 +29,11 @@ export default function TabbedGrid() {
     queryKey: ['anime', 'tabbed-grid', activeTab, hideAdult],
     queryFn: async () => {
       if (activeTab === TAB_LIST[0]) {
-        return getThisSeasonAnime(18, 1, hideAdult);
+        return getThisSeasonAnime(40, 1, hideAdult);
       } else if (activeTab === TAB_LIST[1]) {
-        return getPopularAnime(18, 1, hideAdult);
+        return getPopularAnime(40, 1, hideAdult);
       } else {
-        return getTopRatedAnime(18, 1, hideAdult);
+        return getTopRatedAnime(40, 1, hideAdult);
       }
     },
     // Retains previous grid content during active fetches for an exceptionally smooth transition
@@ -60,7 +60,7 @@ export default function TabbedGrid() {
       <MediaGrid
         items={currentData || []}
         loading={currentLoading}
-        skeletonCount={18}
+        skeletonCount={40}
       />
 
       <Link

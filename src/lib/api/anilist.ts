@@ -133,7 +133,7 @@ export async function getTrendingAnime(perPage = 8, page = 1, hideAdult = true):
   } catch (err) {
     console.warn('getTrendingAnime failed, falling back to Jikan:', err);
     try {
-      const data = await fetchJikanFallback('/top/anime', { filter: 'bypopular', page, limit: perPage });
+      const data = await fetchJikanFallback('/top/anime', { filter: 'bypopularity', page, limit: Math.min(perPage, 25) });
       return (data || []).map(mapJikanToAniListMedia);
     } catch (fallbackErr) {
       console.error('Jikan fallback for trending failed:', fallbackErr);
@@ -167,7 +167,7 @@ export async function getThisSeasonAnime(perPage = 18, page = 1, hideAdult = tru
   } catch (err) {
     console.warn('getThisSeasonAnime failed, falling back to Jikan:', err);
     try {
-      const data = await fetchJikanFallback('/seasons/now', { page, limit: perPage });
+      const data = await fetchJikanFallback('/seasons/now', { page, limit: Math.min(perPage, 25) });
       return (data || []).map(mapJikanToAniListMedia);
     } catch (fallbackErr) {
       console.error('Jikan fallback for popular this season failed:', fallbackErr);
@@ -196,7 +196,7 @@ export async function getPopularAnime(perPage = 18, page = 1, hideAdult = true):
   } catch (err) {
     console.warn('getPopularAnime failed, falling back to Jikan:', err);
     try {
-      const data = await fetchJikanFallback('/top/anime', { filter: 'bypopular', page, limit: perPage });
+      const data = await fetchJikanFallback('/top/anime', { filter: 'bypopularity', page, limit: Math.min(perPage, 25) });
       return (data || []).map(mapJikanToAniListMedia);
     } catch (fallbackErr) {
       console.error('Jikan fallback for popular failed:', fallbackErr);
@@ -225,7 +225,7 @@ export async function getTopRatedAnime(perPage = 18, page = 1, hideAdult = true)
   } catch (err) {
     console.warn('getTopRatedAnime failed, falling back to Jikan:', err);
     try {
-      const data = await fetchJikanFallback('/top/anime', { page, limit: perPage });
+      const data = await fetchJikanFallback('/top/anime', { page, limit: Math.min(perPage, 25) });
       return (data || []).map(mapJikanToAniListMedia);
     } catch (fallbackErr) {
       console.error('Jikan fallback for top rated failed:', fallbackErr);
@@ -254,7 +254,7 @@ export async function getTopUpcomingAnime(perPage = 18, page = 1, hideAdult = tr
   } catch (err) {
     console.warn('getTopUpcomingAnime failed, falling back to Jikan:', err);
     try {
-      const data = await fetchJikanFallback('/top/anime', { filter: 'upcoming', page, limit: perPage });
+      const data = await fetchJikanFallback('/top/anime', { filter: 'upcoming', page, limit: Math.min(perPage, 25) });
       return (data || []).map(mapJikanToAniListMedia);
     } catch (fallbackErr) {
       console.error('Jikan fallback for upcoming failed:', fallbackErr);
