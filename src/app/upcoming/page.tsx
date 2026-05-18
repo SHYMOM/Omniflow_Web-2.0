@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
-import { getUpcomingAnime } from '@/lib/api/anilist';
+import { getTopUpcomingAnime } from '@/lib/api/anilist';
 import { mapAniListToMediaItem } from '@/lib/api/hybrid';
 import MediaGrid from '@/components/media/MediaGrid';
 import { Loader2 } from 'lucide-react';
@@ -19,7 +19,7 @@ export default function UpcomingPage() {
     status
   } = useInfiniteQuery({
     queryKey: ['anime', 'upcoming-listing'],
-    queryFn: ({ pageParam = 1 }) => getUpcomingAnime(24, pageParam).then(res => res.map(mapAniListToMediaItem)),
+    queryFn: ({ pageParam = 1 }) => getTopUpcomingAnime(24, pageParam).then((res: any[]) => res.map(mapAniListToMediaItem)),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => lastPage.length === 24 ? allPages.length + 1 : undefined,
   });

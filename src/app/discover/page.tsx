@@ -8,6 +8,7 @@ import { searchHybrid, getHybridTrending } from '@/lib/api/hybrid';
 import type { MediaItem } from '@/types/media';
 import MediaGrid from '@/components/media/MediaGrid';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import { useUserStore } from '@/store/userStore';
 
 const GENRES = ['Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-Fi', 'Slice of Life', 'Thriller'];
 const YEARS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
@@ -21,6 +22,9 @@ export default function DiscoverPage() {
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>('all');
 
+  const { settings } = useUserStore();
+  const hideAdult = settings?.hideAdult ?? true;
+
   const {
     data,
     fetchNextPage,
@@ -29,11 +33,11 @@ export default function DiscoverPage() {
     status,
     refetch
   } = useInfiniteQuery({
-    queryKey: ['discover', debouncedQuery],
+    queryKey: ['discover', debouncedQuery, hideAdult],
     queryFn: ({ pageParam = 1 }) => 
       debouncedQuery.length >= 2 
-        ? searchHybrid(debouncedQuery, pageParam)
-        : getHybridTrending(pageParam),
+        ? searchHybrid(debouncedQuery, pageParam, hideAdult)
+        : getHybridTrending(pageParam, hideAdult),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
   });

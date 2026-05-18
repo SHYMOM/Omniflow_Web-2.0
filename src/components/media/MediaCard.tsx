@@ -19,7 +19,8 @@ interface MediaCardProps {
 
 export default function MediaCard({ media, className, showHoverCard = true }: MediaCardProps) {
   const [showPopover, setShowPopover] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const enterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Adapt input media seamlessly to unified MediaItem schema
@@ -42,12 +43,30 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
 
   const handleMouseEnter = useCallback(() => {
     if (!showHoverCard) return;
-    timeoutRef.current = setTimeout(() => setShowPopover(true), 600);
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+    enterTimeoutRef.current = setTimeout(() => setShowPopover(true), 400);
   }, [showHoverCard]);
 
   const handleMouseLeave = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setShowPopover(false);
+    if (enterTimeoutRef.current) {
+      clearTimeout(enterTimeoutRef.current);
+      enterTimeoutRef.current = null;
+    }
+    leaveTimeoutRef.current = setTimeout(() => setShowPopover(false), 200);
+  }, []);
+
+  const handlePopoverMouseEnter = useCallback(() => {
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handlePopoverMouseLeave = useCallback(() => {
+    leaveTimeoutRef.current = setTimeout(() => setShowPopover(false), 200);
   }, []);
 
   return (
@@ -102,7 +121,12 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
       {/* Edge-aware Hover Card Popover */}
       <AnimatePresence>
         {showHoverCard && showPopover && (
-          <HoverCard media={item} parentRef={cardRef} />
+          <HoverCard 
+            media={item} 
+            parentRef={cardRef} 
+            onMouseEnter={handlePopoverMouseEnter}
+            onMouseLeave={handlePopoverMouseLeave}
+          />
         )}
       </AnimatePresence>
     </div>

@@ -15,7 +15,9 @@ const TABS = ['Overview', 'More Like This'];
 
 export default function MovieDetailPage() {
   const params = useParams();
-  const id = Number(params.id.toString().replace('tmdb-movie-', ''));
+  const rawParamId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const idStr = String(rawParamId || '').replace('tmdb-movie-', '');
+  const id = Number(idStr) || 0;
   const [activeTab, setActiveTab] = useState(TABS[0]);
 
   const { data: movie, isLoading, error } = useQuery({

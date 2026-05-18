@@ -9,9 +9,10 @@ import MediaRow from '@/components/media/MediaRow';
 interface TrendingRowProps {
   items: (AniListMedia | MediaItem)[];
   loading?: boolean;
+  onLoadMore?: () => void;
 }
 
-export default function TrendingRow({ items, loading }: TrendingRowProps) {
+export default function TrendingRow({ items, loading, onLoadMore }: TrendingRowProps) {
   return (
     <section className="px-4 md:px-6 py-6">
       {/* Section header */}
@@ -25,7 +26,7 @@ export default function TrendingRow({ items, loading }: TrendingRowProps) {
         </Link>
       </div>
 
-      <MediaRow items={items} loading={loading} />
+      <MediaRow items={items} loading={loading} onLoadMore={onLoadMore} />
     </section>
   );
 }

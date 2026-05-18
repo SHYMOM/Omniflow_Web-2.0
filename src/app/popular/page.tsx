@@ -7,9 +7,12 @@ import { getPopularAnime } from '@/lib/api/anilist';
 import { mapAniListToMediaItem } from '@/lib/api/hybrid';
 import MediaGrid from '@/components/media/MediaGrid';
 import { Loader2 } from 'lucide-react';
+import { useUserStore } from '@/store/userStore';
 
 export default function PopularPage() {
   const { ref, inView } = useInView();
+  const { settings } = useUserStore();
+  const hideAdult = settings?.hideAdult ?? true;
 
   const {
     data,
@@ -18,8 +21,8 @@ export default function PopularPage() {
     isFetchingNextPage,
     status
   } = useInfiniteQuery({
-    queryKey: ['anime', 'popular'],
-    queryFn: ({ pageParam = 1 }) => getPopularAnime(24, pageParam).then(res => res.map(mapAniListToMediaItem)),
+    queryKey: ['anime', 'popular', hideAdult],
+    queryFn: ({ pageParam = 1 }) => getPopularAnime(24, pageParam, hideAdult).then((res: any[]) => res.map(mapAniListToMediaItem)),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => lastPage.length === 24 ? allPages.length + 1 : undefined,
   });

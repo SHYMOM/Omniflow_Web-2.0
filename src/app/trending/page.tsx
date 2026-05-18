@@ -6,9 +6,12 @@ import { useInView } from 'react-intersection-observer';
 import { getHybridTrending } from '@/lib/api/hybrid';
 import MediaGrid from '@/components/media/MediaGrid';
 import { Loader2 } from 'lucide-react';
+import { useUserStore } from '@/store/userStore';
 
 export default function TrendingPage() {
   const { ref, inView } = useInView();
+  const { settings } = useUserStore();
+  const hideAdult = settings?.hideAdult ?? true;
 
   const {
     data,
@@ -17,10 +20,10 @@ export default function TrendingPage() {
     isFetchingNextPage,
     status
   } = useInfiniteQuery({
-    queryKey: ['trending'],
-    queryFn: ({ pageParam = 1 }) => getHybridTrending(pageParam),
+    queryKey: ['trending', hideAdult],
+    queryFn: () => getHybridTrending(hideAdult),
     initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
+    getNextPageParam: () => undefined,
   });
 
   useEffect(() => {

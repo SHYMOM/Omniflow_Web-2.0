@@ -18,6 +18,7 @@ interface UserState {
   addToWatchlist: (item: WatchlistEntry) => void;
   removeFromWatchlist: (mediaId: string) => void;
   isInWatchlist: (mediaId: string) => boolean;
+  updateWatchlistStatus: (mediaId: string, status: string) => void;
 
   history: WatchHistoryEntry[];
   addToHistory: (entry: WatchHistoryEntry) => void;
@@ -32,6 +33,9 @@ interface UserState {
     defaultToDub: boolean;
     autoPlayTrailer: boolean;
     hideAdult: boolean;
+    theme: 'midnight' | 'dark' | 'light';
+    brandColor: string;
+    incognitoMode: boolean;
   };
   updateSettings: (settings: Partial<UserState['settings']>) => void;
 }
@@ -67,16 +71,24 @@ export const useUserStore = create<UserState>()(
       addToWatchlist: (item) =>
         set((state) => {
           if (state.watchlist.some((w) => w.mediaId === item.mediaId)) return state;
-          return { watchlist: [item, ...state.watchlist] };
+          // default status to 'planning' if not provided
+          const newItem = { ...item, status: item.status || 'planning' };
+          return { watchlist: [newItem, ...state.watchlist] };
         }),
       removeFromWatchlist: (mediaId) =>
         set((state) => ({ watchlist: state.watchlist.filter((w) => w.mediaId !== mediaId) })),
       isInWatchlist: (mediaId) => get().watchlist.some((w) => w.mediaId === mediaId),
+      updateWatchlistStatus: (mediaId, status) =>
+        set((state) => ({
+          watchlist: state.watchlist.map((w) =>
+            w.mediaId === mediaId ? { ...w, status: status as any } : w
+          ),
+        })),
 
       history: [],
       addToHistory: (entry) =>
         set((state) => {
-          if (state.historyPaused) return state;
+          if (state.historyPaused || state.settings.incognitoMode) return state;
           // Robust deduplication: Remove any existing entry for this media ID entirely
           // to ensure only the latest episode for a series is shown in 'Jump Back In'.
           const filtered = state.history.filter((h) => h.mediaId !== entry.mediaId);
@@ -108,6 +120,9 @@ export const useUserStore = create<UserState>()(
         defaultServerId: 'vidsrc-icu',
         autoPlayTrailer: true,
         hideAdult: true,
+        theme: 'midnight',
+        brandColor: '#00E676',
+        incognitoMode: false,
       },
       updateSettings: (newSettings) =>
         set((state) => ({ settings: { ...state.settings, ...newSettings } })),

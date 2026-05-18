@@ -140,12 +140,12 @@ export default function OverviewTab({ media }: OverviewTabProps) {
       </AnimatePresence>
 
       {/* Studios */}
-      {media.studios?.nodes?.length > 0 && (
+      {media.studios && media.studios.length > 0 && (
         <div>
           <h3 className="text-base font-semibold text-white mb-3">Studios</h3>
           <div className="flex flex-wrap gap-2">
-            {media.studios.nodes.map((s) => (
-              <span key={s.id} className="text-sm text-text-secondary bg-surface border border-border px-3 py-1 rounded-full">{s.name}</span>
+            {media.studios.map((studioName) => (
+              <span key={studioName} className="text-sm text-text-secondary bg-surface border border-border px-3 py-1 rounded-full">{studioName}</span>
             ))}
           </div>
         </div>
@@ -164,12 +164,12 @@ export default function OverviewTab({ media }: OverviewTabProps) {
       )}
 
       {/* Tags */}
-      {media.tags?.length > 0 && (
+      {media.tags && media.tags.length > 0 && (
         <div>
           <h3 className="text-base font-semibold text-white mb-3">Tags</h3>
           <div className="flex flex-wrap gap-2">
-            {media.tags.filter(t => !t.isMediaSpoiler).slice(0, 15).map((t) => (
-              <span key={t.id} className="text-sm text-text-secondary bg-surface border border-border px-3 py-1 rounded-full">{t.name}</span>
+            {media.tags.slice(0, 15).map((tagName) => (
+              <span key={tagName} className="text-sm text-text-secondary bg-surface border border-border px-3 py-1 rounded-full">{tagName}</span>
             ))}
           </div>
         </div>

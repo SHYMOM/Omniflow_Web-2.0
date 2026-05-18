@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AniListMedia } from '@/types/anilist';
 import type { MediaItem } from '@/types/media';
@@ -14,6 +14,7 @@ interface MediaRowProps {
   skeletonCount?: number;
   className?: string;
   showHoverCard?: boolean;
+  onLoadMore?: () => void;
 }
 
 export default function MediaRow({
@@ -22,17 +23,36 @@ export default function MediaRow({
   skeletonCount = 8,
   className,
   showHoverCard = true,
+  onLoadMore,
 }: MediaRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;
-    const amount = scrollRef.current.clientWidth * 0.7;
-    scrollRef.current.scrollBy({
+    const container = scrollRef.current;
+    const amount = container.clientWidth * 0.7;
+    container.scrollBy({
       left: dir === 'left' ? -amount : amount,
       behavior: 'smooth',
     });
+
+    if (dir === 'right' && onLoadMore) {
+      // Trigger loadMore if we are near the end of scroll
+      const isNearEnd = container.scrollLeft + container.clientWidth >= container.scrollWidth - amount - 250;
+      if (isNearEnd) {
+        onLoadMore();
+      }
+    }
   };
+
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current || !onLoadMore) return;
+    const container = scrollRef.current;
+    const isNearEnd = container.scrollLeft + container.clientWidth >= container.scrollWidth - 250;
+    if (isNearEnd) {
+      onLoadMore();
+    }
+  }, [onLoadMore]);
 
   if (loading) {
     return (
@@ -51,7 +71,7 @@ export default function MediaRow({
       {/* Scroll left button */}
       <button
         onClick={() => scroll('left')}
-        className="absolute left-0 top-1/3 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-surface/90 border border-border flex items-center justify-center text-white opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-surface-hover"
+        className="absolute left-0 top-1/3 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-surface/90 border border-border flex items-center justify-center text-white opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-surface-hover cursor-pointer"
         aria-label="Scroll left"
       >
         <ChevronLeft size={20} />
@@ -60,6 +80,7 @@ export default function MediaRow({
       {/* Scrollable container */}
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex gap-3 overflow-x-auto hide-scrollbar scroll-smooth pb-2"
       >
         {(() => {
@@ -80,7 +101,7 @@ export default function MediaRow({
       {/* Scroll right button */}
       <button
         onClick={() => scroll('right')}
-        className="absolute right-0 top-1/3 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-surface/90 border border-border flex items-center justify-center text-white opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-surface-hover"
+        className="absolute right-0 top-1/3 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-surface/90 border border-border flex items-center justify-center text-white opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-surface-hover cursor-pointer"
         aria-label="Scroll right"
       >
         <ChevronRight size={20} />

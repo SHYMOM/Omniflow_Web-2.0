@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { getTopUpcomingAnime } from '@/lib/api/anilist';
 import { getHybridTrending } from '@/lib/api/hybrid';
 import { useUserStore } from '@/store/userStore';
@@ -17,27 +17,48 @@ export default function HomePage() {
   const { settings } = useUserStore();
   const hideAdult = settings.hideAdult;
 
-  const { data: trendingData, isLoading: trendingLoading } = useQuery({
-    queryKey: ['hybrid', 'trending', hideAdult],
-    queryFn: () => getHybridTrending(hideAdult),
+  // Infinite Query for Trending Now
+  const {
+    data: trendingPages,
+    isLoading: trendingLoading,
+    fetchNextPage: fetchNextTrending,
+    hasNextPage: hasNextTrending
+  } = useInfiniteQuery({
+    queryKey: ['hybrid', 'trending-infinite', hideAdult],
+    queryFn: ({ pageParam = 1 }) => getHybridTrending(pageParam, hideAdult),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
   });
 
-  const { data: upcomingData } = useQuery({
-    queryKey: ['anime', 'upcoming', hideAdult],
-    queryFn: () => getTopUpcomingAnime(6, 1, hideAdult),
+  // Infinite Query for Top Upcoming
+  const {
+    data: upcomingPages,
+    fetchNextPage: fetchNextUpcoming,
+    hasNextPage: hasNextUpcoming
+  } = useInfiniteQuery({
+    queryKey: ['anime', 'upcoming-infinite', hideAdult],
+    queryFn: ({ pageParam = 1 }) => getTopUpcomingAnime(12, pageParam, hideAdult),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
   });
 
+  const trendingItems = trendingPages?.pages.flat() || [];
+  const upcomingItems = upcomingPages?.pages.flat() || [];
 
   return (
     <div className="min-h-screen">
       {/* Hero Banner */}
-      <HeroBanner items={trendingData || []} />
+      <HeroBanner items={trendingItems} />
 
       {/* Continue Watching */}
       <ContinueWatching />
 
       {/* Trending Row */}
-      <TrendingRow items={trendingData || []} loading={trendingLoading} />
+      <TrendingRow 
+        items={trendingItems} 
+        loading={trendingLoading} 
+        onLoadMore={() => hasNextTrending && fetchNextTrending()} 
+      />
 
       {/* Main content area with sidebar */}
       <div className="px-4 md:px-6">
@@ -56,7 +77,10 @@ export default function HomePage() {
       </div>
 
       {/* Top Upcoming */}
-      <TopUpcoming items={upcomingData || []} />
+      <TopUpcoming 
+        items={upcomingItems} 
+        onLoadMore={() => hasNextUpcoming && fetchNextUpcoming()} 
+      />
 
       {/* Recently Updated */}
       <RecentlyUpdated />

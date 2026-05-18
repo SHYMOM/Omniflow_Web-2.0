@@ -9,6 +9,7 @@ import MobileNav from "@/components/layout/MobileNav";
 import AuthModal from "@/components/auth/AuthModal";
 import QuickSearch from "@/components/layout/QuickSearch";
 import "./globals.css";
+import ThemeManager from "@/components/layout/ThemeManager";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -38,6 +39,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} font-sans antialiased bg-void text-white`}>
         <QueryProvider>
+          <ThemeManager />
           <Suspense>
             <Topbar />
             <Sidebar />

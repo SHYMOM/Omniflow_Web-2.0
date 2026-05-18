@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, type RefObject } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Play, Bookmark, Star, Clock, Calendar, Volume2, VolumeX } from 'lucide-react';
+import { Play, Bookmark, Star, Clock, Calendar, Volume2, VolumeX, BookOpen, Layers } from 'lucide-react';
+import YouTube from 'react-youtube';
 import { cn } from '@/lib/utils/cn';
 import type { MediaItem } from '@/types/media';
 import TypeBadge from './TypeBadge';
@@ -13,11 +14,19 @@ import Portal from '@/components/ui/Portal';
 interface HoverCardProps {
   media: MediaItem;
   parentRef: RefObject<HTMLDivElement | null>;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
-export default function HoverCard({ media, parentRef }: HoverCardProps) {
+export default function HoverCard({ media, parentRef, onMouseEnter, onMouseLeave }: HoverCardProps) {
   const [isMuted, setIsMuted] = useState(true);
   const playerRef = useRef<any>(null);
+  const isMutedRef = useRef(isMuted);
+  
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
   const [positionStyle, setPositionStyle] = useState<React.CSSProperties>({
     position: 'fixed',
     visibility: 'hidden',
@@ -34,8 +43,9 @@ export default function HoverCard({ media, parentRef }: HoverCardProps) {
   const isAiring = media.status === 'RELEASING';
   const genres = media.genres?.slice(0, 3) || [];
 
-  const href = media.type === 'manga' ? `/manga/${media.id}` : media.type === 'movie' ? `/movies/${media.id}` : media.type === 'tv' ? `/tv/${media.id}` : `/anime/${media.id}`;
-  const watchHref = media.type === 'manga' ? href : `/watch?id=${media.id}&type=${media.type}&ep=1`;
+  const isManga = media.type === 'manga';
+  const href = isManga ? `/manga/${media.id}` : media.type === 'movie' ? `/movies/${media.id}` : media.type === 'tv' ? `/tv/${media.id}` : `/anime/${media.id}`;
+  const watchHref = isManga ? `/read/${media.id}/1` : `/watch?id=${media.id}&type=${media.type}&ep=1`;
 
   const trailerYoutubeId = media.trailerYoutubeId || null;
   const bgUrl = trailerYoutubeId
@@ -45,8 +55,12 @@ export default function HoverCard({ media, parentRef }: HoverCardProps) {
   // Sync mute state via YT API to avoid iframe reload
   useEffect(() => {
     if (playerRef.current && playerRef.current.mute) {
-      if (isMuted) playerRef.current.mute();
-      else playerRef.current.unMute();
+      if (isMuted) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+        if (playerRef.current.setVolume) playerRef.current.setVolume(100);
+      }
     }
   }, [isMuted]);
 
@@ -72,39 +86,25 @@ export default function HoverCard({ media, parentRef }: HoverCardProps) {
     });
   }, [parentRef]);
 
-  // YouTube API Integration for cinematic control
+  // Reset player reference when media ID changes to avoid manipulating unmounted player
   useEffect(() => {
-    if (!trailerYoutubeId) return;
+    playerRef.current = null;
+  }, [media.id]);
 
-    const setupPlayer = () => {
-      try {
-        playerRef.current = new (window as any).YT.Player(`hover-player-${media.id}`, {
-          events: {
-            'onReady': (event: any) => {
-              if (isMuted) event.target.mute();
-              else event.target.unMute();
-            },
-            'onStateChange': (event: any) => {
-               // Prevent video from pausing if possible or handle other states
-            }
-          }
-        });
-      } catch (e) {}
-    };
-
-    if (!(window as any).YT) {
-      const tag = document.createElement('script');
-      tag.src = "https://www.youtube.com/iframe_api";
-      document.body.appendChild(tag);
-      (window as any).onYouTubeIframeAPIReady = setupPlayer;
-    } else if ((window as any).YT.Player) {
-      setupPlayer();
+  // YouTube player handlers
+  const onPlayerReady = (event: any) => {
+    playerRef.current = event.target;
+    if (isMutedRef.current) {
+      event.target.mute();
+    } else {
+      event.target.unMute();
+      if (event.target.setVolume) event.target.setVolume(100);
     }
+  };
 
-    return () => {
-      if (playerRef.current?.destroy) playerRef.current.destroy();
-    };
-  }, [media.id, trailerYoutubeId]);
+  const onPlayerEnd = (event: any) => {
+    event.target.playVideo();
+  };
 
   return (
     <Portal>
@@ -115,16 +115,32 @@ export default function HoverCard({ media, parentRef }: HoverCardProps) {
         transition={{ duration: 0.2, ease: 'easeOut' }}
         className="z-[9999] w-[340px] rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] border border-white/10 bg-void/90 backdrop-blur-2xl pointer-events-auto select-none"
         style={positionStyle}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         <div className="relative w-full aspect-video bg-surface overflow-hidden">
           {trailerYoutubeId ? (
             <div className="absolute inset-0">
-              <iframe
-                id={`hover-player-${media.id}`}
-                src={`https://www.youtube.com/embed/${trailerYoutubeId}?autoplay=1&mute=1&controls=0&modestbranding=1&loop=1&playlist=${trailerYoutubeId}&enablejsapi=1&iv_load_policy=3&rel=0&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                title={title}
-                allow="autoplay; encrypted-media"
-                className="absolute inset-0 w-full h-full pointer-events-none scale-[1.3] object-cover"
+              <YouTube
+                videoId={trailerYoutubeId}
+                opts={{
+                  height: '100%',
+                  width: '100%',
+                  playerVars: {
+                    autoplay: 1,
+                    mute: 1,
+                    controls: 0,
+                    modestbranding: 1,
+                    enablejsapi: 1,
+                    iv_load_policy: 3,
+                    rel: 0,
+                    origin: typeof window !== 'undefined' ? window.location.origin : '',
+                  },
+                }}
+                onReady={onPlayerReady}
+                onEnd={onPlayerEnd}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[112%] h-[112%] pointer-events-none"
+                iframeClassName="w-full h-full object-cover"
               />
               {/* Cinematic Vignette Overlay to hide YT UI */}
               <div className="absolute inset-0 z-10 pointer-events-none shadow-[inset_0_0_80px_rgba(0,0,0,0.7)] bg-gradient-to-t from-void/40 via-transparent to-transparent" />
@@ -165,7 +181,14 @@ export default function HoverCard({ media, parentRef }: HoverCardProps) {
                 <Star size={12} className="text-accent-gold" fill="currentColor" /> {scoreLabel}
               </span>
             )}
-            <span className="flex items-center gap-1"><Clock size={12} /> {durationLabel}</span>
+            {isManga ? (
+              <>
+                <span className="flex items-center gap-1"><BookOpen size={12} /> {media.chapterCount || '?'} Chapters</span>
+                <span className="flex items-center gap-1"><Layers size={12} /> {media.volumeCount || '?'} Volumes</span>
+              </>
+            ) : (
+              <span className="flex items-center gap-1"><Clock size={12} /> {durationLabel}</span>
+            )}
             <span className="flex items-center gap-1"><Calendar size={12} /> {dateLabel}</span>
           </div>
 
@@ -176,7 +199,7 @@ export default function HoverCard({ media, parentRef }: HoverCardProps) {
               href={watchHref}
               className="flex-1 flex items-center justify-center gap-2 bg-white text-black font-bold text-xs py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
             >
-              <Play size={14} fill="currentColor" /> Watch now
+              {isManga ? <BookOpen size={14} /> : <Play size={14} fill="currentColor" />} {isManga ? 'Read now' : 'Watch now'}
             </Link>
             <button className="p-2.5 rounded-lg bg-surface border border-border hover:bg-surface-hover transition-colors text-text-secondary hover:text-white cursor-pointer">
               <Bookmark size={16} />

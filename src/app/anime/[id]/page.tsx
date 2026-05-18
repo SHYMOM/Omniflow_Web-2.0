@@ -26,9 +26,9 @@ export default function AnimeDetailPage() {
     queryKey: ['anime', rawId], // Use rawId for cache key
     queryFn: () => {
       if (rawId.startsWith('mal-')) {
-        return getAnimeByMalId(id);
+        return getAnimeByMalId(String(id));
       }
-      return getAnimeDetail(id);
+      return getAnimeDetail(String(id));
     },
     enabled: !!id,
   });

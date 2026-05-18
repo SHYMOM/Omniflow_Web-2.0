@@ -14,7 +14,7 @@
   --color-badge: #333333;
 
   /* ── Accent Colors ── */
-  --color-accent-green: #4ade80;
+  --color-accent-green: var(--accent-primary);
   --color-accent-red: #ef4444;
   --color-accent-gold: #facc15;
   --color-accent-blue: #3b82f6;
@@ -36,9 +36,10 @@
   --animate-scale-in: scale-in 0.2s ease-out;
 }
 
-/* ── Force Dark Mode ── */
+/* ── Force Dark Mode & Dynamic Brand Color ── */
 :root {
   color-scheme: dark;
+  --accent-primary: #00E676;
 }
 
 /* ── Body Defaults ── */

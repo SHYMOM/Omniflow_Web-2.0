@@ -34,7 +34,7 @@ export default function MangaReaderPage() {
 
   const { data: manga, isLoading } = useQuery({
     queryKey: ['manga', mangaId],
-    queryFn: () => getMangaDetail(mangaId),
+    queryFn: () => getMangaDetail(String(mangaId)),
     enabled: !!mangaId,
   });
 

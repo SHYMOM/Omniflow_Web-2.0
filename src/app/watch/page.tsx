@@ -19,6 +19,7 @@ import EpisodeSidebar from '@/components/player/EpisodeSidebar';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { cn } from '@/lib/utils/cn';
 import type { Server } from '@/types/server';
+import type { MediaItem } from '@/types/media';
 
 function WatchContent() {
   const searchParams = useSearchParams();
@@ -42,7 +43,7 @@ function WatchContent() {
   const { data: media, isLoading } = useQuery({
     queryKey: ['media', mediaType, mediaId],
     queryFn: async () => {
-      if (mediaType === 'anime') return getAnimeDetail(mediaId);
+      if (mediaType === 'anime') return getAnimeDetail(String(mediaId));
       if (mediaType === 'movie') return getMovieDetails(Number(mediaId));
       if (mediaType === 'tv') return getTVDetails(Number(mediaId));
       return null;
@@ -83,7 +84,7 @@ function WatchContent() {
   useEffect(() => {
     if (!media) return;
     addToHistory({
-      mediaId: rawId.includes('-') ? rawId : (mediaType === 'anime' ? `anilist-${rawId}` : `tmdb-${rawId}`),
+      mediaId: rawId.includes('-') ? rawId : (mediaType === 'anime' ? `anilist-${rawId}` : (mediaType === 'movie' ? `tmdb-movie-${rawId}` : `tmdb-tv-${rawId}`)),
       mediaType: mediaType as 'anime' | 'movie' | 'tv',
       episodeNumber: epNum,
       episodeTitle: title || 'Streaming',
@@ -235,7 +236,7 @@ function WatchContent() {
               "text-xs text-text-secondary leading-relaxed transition-all",
               !isDescriptionExpanded && "line-clamp-2"
             )}>
-              {media?.description?.replace(/<[^>]*>/g, '') || 
+              {((media as any)?.description || (media as any)?.overview || '').replace(/<[^>]*>/g, '') || 
                 "Alvida pirates plunder a ship only to find a barrel containing a strange boy named Luffy who is on a quest to find the legendary One Piece and become the King of Pirates."}
             </p>
             <span className="block text-[10px] font-bold text-text-muted group-hover:text-white transition-colors mt-2 text-right uppercase tracking-wider">
@@ -393,7 +394,7 @@ function WatchContent() {
         {/* Right Column: Integrated Up Next Sidebar */}
         <div className="w-full xl:w-[380px] shrink-0">
           <EpisodeSidebar
-            mediaId={mediaId}
+            mediaId={rawId}
             mediaType={mediaType}
             currentEp={epNum}
             totalEpisodes={mediaType === 'anime' ? (media as any)?.episodes : (media as any)?.number_of_episodes || 1}
@@ -441,7 +442,7 @@ function WatchContent() {
                       <div className="flex items-center gap-2">
                         <span className={cn(
                           "w-2 h-2 rounded-full",
-                          isActive ? "bg-accent-green shadow-[0_0_8px_#A8FF35]" : "bg-text-muted"
+                          isActive ? "bg-accent-green shadow-[0_0_8px_#00E676]" : "bg-text-muted"
                         )} />
                         <span className={cn(
                           "text-xs font-bold transition-colors",
@@ -456,7 +457,7 @@ function WatchContent() {
                         )}
                       </div>
                       <p className="text-[10px] text-text-muted mt-0.5">
-                        {server.type.toUpperCase()} Protocol stream cluster
+                        CDN Protocol stream cluster
                       </p>
                     </div>
 

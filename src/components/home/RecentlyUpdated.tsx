@@ -10,6 +10,39 @@ import { getRecentlyUpdatedAnime } from '@/lib/api/anilist';
 import { mapAniListToMediaItem } from '@/lib/api/hybrid';
 import { useUserStore } from '@/store/userStore';
 
+const getRealUploadTime = (rawMedia: any) => {
+  // Option 1: Calculate time based on previous episode airing schedule (weekly)
+  if (rawMedia?.nextAiringEpisode?.airingAt) {
+    const nextEpTime = rawMedia.nextAiringEpisode.airingAt; // unix timestamp in seconds
+    const lastEpTime = nextEpTime - (7 * 24 * 60 * 60); // 7 days ago
+    const diffMs = Date.now() - (lastEpTime * 1000);
+    if (diffMs > 0) {
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMins < 60) return `${Math.max(1, diffMins)}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+    }
+  }
+
+  // Option 2: Fall back to DB updatedAt timestamp
+  if (rawMedia?.updatedAt) {
+    const diffMs = Date.now() - (rawMedia.updatedAt * 1000);
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 60) return `${Math.max(1, diffMins)}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  }
+
+  // Option 3: Balanced default fallback
+  return '2h ago';
+};
+
 export default function RecentlyUpdated() {
   const { ref, inView } = useInView();
   const { settings } = useUserStore();
@@ -58,7 +91,7 @@ export default function RecentlyUpdated() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-baseline gap-3">
           <h2 className="text-2xl font-bold text-white font-display">Recently Updated</h2>
-          <span className="text-[10px] text-accent-green font-bold uppercase tracking-widest border border-accent-green/30 px-1.5 py-0.5 rounded bg-accent-green/5">Live</span>
+          <span className="text-[10px] text-accent-green font-bold uppercase tracking-widest border border-accent-green/30 px-1.5 py-0.5 rounded bg-accent-green/5 animate-pulse">Live</span>
         </div>
         <Link
           href="/season"
@@ -71,7 +104,7 @@ export default function RecentlyUpdated() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {(() => {
           const seen = new Set();
-          return allItems.map((rawMedia, index) => {
+          return allItems.map((rawMedia) => {
             const item = mapAniListToMediaItem(rawMedia);
             if (seen.has(item.id)) return null;
             seen.add(item.id);
@@ -82,6 +115,8 @@ export default function RecentlyUpdated() {
             const latestEp = item.episodeCount || '?';
             const targetHref = `/${item.type}/${item.id}`;
             const watchHref = `/watch?id=${item.id}&type=${item.type}&ep=${item.episodeCount || 1}`;
+
+            const uploadTime = getRealUploadTime(rawMedia);
 
             return (
               <div key={item.id} className="group flex flex-col">
@@ -117,7 +152,7 @@ export default function RecentlyUpdated() {
                         {title}
                       </Link>
                       <span className="text-[10px] text-text-muted whitespace-nowrap font-medium italic">
-                        {index % 3 === 0 ? '4h ago' : index % 2 === 0 ? '1d ago' : '2h ago'}
+                        {uploadTime}
                       </span>
                     </div>
                   </div>

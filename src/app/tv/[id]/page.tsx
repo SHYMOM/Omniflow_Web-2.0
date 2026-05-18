@@ -16,7 +16,9 @@ const TABS = ['Overview', 'Seasons', 'More Like This'];
 
 export default function TVDetailPage() {
   const params = useParams();
-  const id = Number(params.id.toString().replace('tmdb-tv-', ''));
+  const rawParamId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const idStr = String(rawParamId || '').replace('tmdb-tv-', '');
+  const id = Number(idStr) || 0;
   const [activeTab, setActiveTab] = useState(TABS[0]);
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
 

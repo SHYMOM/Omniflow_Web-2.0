@@ -114,7 +114,7 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
         <div className="p-3.5 bg-surface/40 border-b border-border flex items-center justify-between">
           <div className="min-w-0">
             <p className="text-xs font-bold text-white truncate">
-              Up Next - {nextEpObj?.epTitle || `Episode ${currentEp + 1}`}
+              Up Next - {nextEpObj?.title || `Episode ${currentEp + 1}`}
             </p>
             <p className="text-[11px] text-text-muted truncate mt-0.5 font-medium">
               Playing - Episode {currentEp} - {title || 'Stream'}

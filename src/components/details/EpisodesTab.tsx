@@ -70,7 +70,7 @@ export default function EpisodesTab({ media }: EpisodesTabProps) {
 
       {/* Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {sorted.map((ep) => (
+        {sorted.map((ep: any) => (
           <Link 
             key={ep.number} 
             href={`/watch?id=${media.id}&type=${media.type}&ep=${ep.number}`} 

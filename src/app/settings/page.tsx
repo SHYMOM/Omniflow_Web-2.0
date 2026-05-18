@@ -98,19 +98,19 @@ export default function SettingsPage() {
                     label="Autoplay Next Episode" 
                     description="Automatically start the next episode after one ends"
                     checked={settings.autoPlayNext}
-                    onChange={(val) => updateSettings({ autoPlayNext: val })}
+                    onChange={(val: boolean) => updateSettings({ autoPlayNext: val })}
                   />
                   <SettingSwitch 
                     label="Autoplay Hero Trailers" 
                     description="Play trailers automatically on the homepage banner"
                     checked={settings.autoPlayTrailer}
-                    onChange={(val) => updateSettings({ autoPlayTrailer: val })}
+                    onChange={(val: boolean) => updateSettings({ autoPlayTrailer: val })}
                   />
                   <SettingSwitch 
                     label="Default to Dub" 
                     description="Prefer dubbed audio when available"
                     checked={settings.defaultToDub}
-                    onChange={(val) => updateSettings({ defaultToDub: val })}
+                    onChange={(val: boolean) => updateSettings({ defaultToDub: val })}
                   />
                 </div>
               </section>
@@ -125,8 +125,17 @@ export default function SettingsPage() {
                   <SettingToggle 
                     label="Theme Mode" 
                     description="Switch between dark, light, and system themes" 
-                    value="Midnight Dark" 
+                    value={
+                      settings.theme === 'light' ? 'Light Mode' :
+                      settings.theme === 'dark' ? 'Standard Dark' : 'Midnight Dark'
+                    }
                     icon={Monitor}
+                    onClick={() => {
+                      const nextTheme = 
+                        settings.theme === 'midnight' ? 'dark' :
+                        settings.theme === 'dark' ? 'light' : 'midnight';
+                      updateSettings({ theme: nextTheme });
+                    }}
                   />
                   <div className="p-4 rounded-xl border border-border bg-void/30">
                     <div className="flex items-center justify-between mb-4">
@@ -136,13 +145,14 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      {['#A8FF35', '#FF357A', '#35A8FF', '#FF9F35', '#B035FF'].map(color => (
+                      {['#00E676', '#FF357A', '#35A8FF', '#FF9F35', '#B035FF'].map(color => (
                         <button 
                           key={color}
+                          onClick={() => updateSettings({ brandColor: color })}
                           style={{ backgroundColor: color }}
                           className={cn(
-                            "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
-                            color === '#A8FF35' ? "border-white shadow-[0_0_10px_rgba(168,255,53,0.5)]" : "border-transparent"
+                            "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 cursor-pointer",
+                            (settings.brandColor || '#00E676') === color ? "border-white shadow-[0_0_10px_rgba(0,230,118,0.5)]" : "border-transparent"
                           )}
                         />
                       ))}
@@ -162,13 +172,13 @@ export default function SettingsPage() {
                     label="Hide Adult Content" 
                     description="Filter out mature/18+ media from all browsing lists and search results"
                     checked={settings.hideAdult}
-                    onChange={(val) => updateSettings({ hideAdult: val })}
+                    onChange={(val: boolean) => updateSettings({ hideAdult: val })}
                   />
                   <SettingSwitch 
                     label="Incognito Mode" 
                     description="Don't record watch history while this is active"
-                    checked={false}
-                    onChange={() => {}}
+                    checked={settings.incognitoMode ?? false}
+                    onChange={(val: boolean) => updateSettings({ incognitoMode: val })}
                   />
                   <SettingToggle 
                     label="Two-Factor Authentication" 
@@ -205,7 +215,7 @@ export default function SettingsPage() {
   );
 }
 
-function SettingToggle({ label, description, value, icon: Icon }: any) {
+function SettingToggle({ label, description, value, icon: Icon, onClick }: any) {
   return (
     <div className="flex items-center justify-between p-4 bg-void/30 rounded-xl border border-border hover:border-white/10 transition-all group">
       <div className="flex items-center gap-4">
@@ -217,7 +227,10 @@ function SettingToggle({ label, description, value, icon: Icon }: any) {
           <p className="text-xs text-text-muted">{description}</p>
         </div>
       </div>
-      <button className="flex items-center gap-2 text-xs font-medium text-text-secondary bg-surface px-3 py-1.5 rounded-lg border border-border hover:text-white transition-all">
+      <button 
+        onClick={onClick}
+        className="flex items-center gap-2 text-xs font-medium text-text-secondary bg-surface px-3 py-1.5 rounded-lg border border-border hover:text-white transition-all cursor-pointer"
+      >
         {value} <ChevronRight size={14} />
       </button>
     </div>

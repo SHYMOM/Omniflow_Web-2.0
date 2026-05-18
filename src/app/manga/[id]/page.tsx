@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { getMangaDetail } from '@/lib/api/anilist';
-import { extractId } from '@/lib/api/hybrid';
+import { extractId, mapAniListToMediaItem } from '@/lib/api/hybrid';
 import DetailHeader from '@/components/details/DetailHeader';
 import OverviewTab from '@/components/details/OverviewTab';
 import RelatedTab from '@/components/details/RelatedTab';
@@ -21,7 +21,7 @@ export default function MangaDetailPage() {
 
   const { data: media, isLoading, error } = useQuery({
     queryKey: ['manga', id],
-    queryFn: () => getMangaDetail(id),
+    queryFn: () => getMangaDetail(String(id)),
     enabled: !!id,
   });
 
@@ -35,17 +35,19 @@ export default function MangaDetailPage() {
     );
   }
 
+  const mediaItem = mapAniListToMediaItem(media);
+
   return (
     <div>
-      <DetailHeader media={media} mediaType="manga" />
+      <DetailHeader media={mediaItem} mediaType="manga" />
 
       <div className="px-4 md:px-6 max-w-7xl mx-auto">
         <Tabs tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} className="mb-6" />
 
-        {activeTab === 'Overview' && <OverviewTab media={media} />}
+        {activeTab === 'Overview' && <OverviewTab media={mediaItem} />}
         {activeTab === 'Chapters' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-             {Array.from({ length: media.chapters || 20 }).map((_, i) => (
+             {Array.from({ length: mediaItem.episodeCount || 20 }).map((_, i) => (
                <a 
                  key={i} 
                  href={`/read/${id}/${i + 1}`}
@@ -56,8 +58,8 @@ export default function MangaDetailPage() {
              ))}
           </div>
         )}
-        {activeTab === 'Characters' && <CharactersTab media={media} />}
-        {activeTab === 'Related' && <RelatedTab media={media} />}
+        {activeTab === 'Characters' && <CharactersTab media={mediaItem} />}
+        {activeTab === 'Related' && <RelatedTab media={mediaItem} />}
       </div>
     </div>
   );

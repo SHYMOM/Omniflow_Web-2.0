@@ -5,10 +5,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Bookmark, ChevronLeft, ChevronRight, Volume2, VolumeX } from 'lucide-react';
+import YouTube from 'react-youtube';
 import type { AniListMedia } from '@/types/anilist';
 import type { MediaItem } from '@/types/media';
 import { mapAniListToMediaItem } from '@/lib/api/hybrid';
-import TypeBadge from '@/components/media/TypeBadge';
 import { useUserStore } from '@/store/userStore';
 
 interface HeroBannerProps {
@@ -22,8 +22,13 @@ export default function HeroBanner({ items }: HeroBannerProps) {
   const [videoError, setVideoError] = useState(false);
   const [progress, setProgress] = useState(0);
   const playerRef = useRef<any>(null);
+  const isMutedRef = useRef(isMuted);
   const { settings } = useUserStore();
   const autoPlayTrailer = settings?.autoPlayTrailer ?? true;
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   const rawCurrent = items[currentIndex];
   const current: MediaItem | null = rawCurrent 
@@ -47,8 +52,12 @@ export default function HeroBanner({ items }: HeroBannerProps) {
   // Handle mute/unmute via YT API to avoid reload
   useEffect(() => {
     if (playerRef.current && playerRef.current.mute) {
-      if (isMuted) playerRef.current.mute();
-      else playerRef.current.unMute();
+      if (isMuted) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+        if (playerRef.current.setVolume) playerRef.current.setVolume(100);
+      }
     }
   }, [isMuted]);
 
@@ -73,52 +82,29 @@ export default function HeroBanner({ items }: HeroBannerProps) {
     return () => clearInterval(timer);
   }, [userInteracted, items.length, autoPlayTrailer, trailerYoutubeId, navigate]);
 
-  // YouTube API integration
+  // Reset player reference when slide changes to avoid manipulating unmounted player
   useEffect(() => {
-    if (!autoPlayTrailer || !trailerYoutubeId) {
-      playerRef.current = null;
-      return;
+    playerRef.current = null;
+  }, [currentIndex]);
+
+  // YouTube player handlers
+  const onPlayerReady = (event: any) => {
+    playerRef.current = event.target;
+    if (isMutedRef.current) {
+      event.target.mute();
+    } else {
+      event.target.unMute();
+      if (event.target.setVolume) event.target.setVolume(100);
     }
+  };
 
-    const setupPlayer = () => {
-      try {
-        playerRef.current = new (window as any).YT.Player(`hero-player-${currentIndex}`, {
-          events: {
-            'onStateChange': (event: any) => {
-              if (event.data === (window as any).YT.PlayerState.ENDED) {
-                navigate('next');
-              }
-            },
-            'onError': () => {
-              setVideoError(true);
-            },
-            'onReady': (event: any) => {
-              if (isMuted) event.target.mute();
-              else event.target.unMute();
-            }
-          }
-        });
-      } catch (err) {
-        setVideoError(true);
-      }
-    };
+  const onPlayerError = () => {
+    setVideoError(true);
+  };
 
-    if (!(window as any).YT) {
-      const tag = document.createElement('script');
-      tag.src = "https://www.youtube.com/iframe_api";
-      document.body.appendChild(tag);
-      (window as any).onYouTubeIframeAPIReady = setupPlayer;
-    } else if ((window as any).YT.Player) {
-      setupPlayer();
-    }
-
-    return () => {
-      if (playerRef.current?.destroy) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
-    };
-  }, [currentIndex, trailerYoutubeId, autoPlayTrailer, navigate]);
+  const onPlayerEnd = () => {
+    navigate('next');
+  };
 
   if (!current) {
     return (
@@ -148,8 +134,8 @@ export default function HeroBanner({ items }: HeroBannerProps) {
   const durationLabel = current.duration || '?';
   const seasonLabel = current.season && current.seasonYear ? `${current.season} ${current.seasonYear}` : current.year ? `${current.year}` : '?';
 
-  const scoreVariant = (current.score || 0) > 7.5 ? 'green' : 'default';
-  const watchHref = current.type === 'manga' ? `/manga/${current.id}` : `/watch?id=${current.id}&type=${current.type}&ep=1`;
+  const isManga = current.type === 'manga';
+  const watchHref = isManga ? `/read/${current.id}/1` : `/watch?id=${current.id}&type=${current.type}&ep=1`;
 
   return (
     <section className="relative w-full h-[75vh] min-h-[500px] overflow-hidden bg-void group">
@@ -176,28 +162,42 @@ export default function HeroBanner({ items }: HeroBannerProps) {
           {/* Video Trailer Layer */}
           {autoPlayTrailer && trailerYoutubeId && !videoError && (
             <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[115%] h-[115%]">
-                <iframe
-                  id={`hero-player-${currentIndex}`}
-                  src={`https://www.youtube.com/embed/${trailerYoutubeId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1&iv_load_policy=3&disablekb=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                  title={title}
-                  allow="autoplay; encrypted-media"
-                  className="w-full h-full object-cover scale-[1.35]"
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[112%] h-[112%]">
+                <YouTube
+                  videoId={trailerYoutubeId}
+                  opts={{
+                    height: '100%',
+                    width: '100%',
+                    playerVars: {
+                      autoplay: 1,
+                      mute: 1,
+                      controls: 0,
+                      showinfo: 0,
+                      rel: 0,
+                      modestbranding: 1,
+                      enablejsapi: 1,
+                      iv_load_policy: 3,
+                      disablekb: 1,
+                      origin: typeof window !== 'undefined' ? window.location.origin : '',
+                    },
+                  }}
+                  onReady={onPlayerReady}
+                  onEnd={onPlayerEnd}
+                  onError={onPlayerError}
+                  className="w-full h-full"
+                  iframeClassName="w-full h-full object-cover"
                 />
               </div>
             </div>
           )}
 
-          {/* Cinematic Shadow Overlays */}
-          {/* Bottom Shadow - Deep fade into the void background */}
-          <div className="absolute inset-0 bg-gradient-to-t from-void via-void/50 to-transparent z-[5]" />
-          <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-void to-transparent z-[5]" />
+          {/* Cinematic Shadow Overlays — Softened to be semi-transparent and ambient */}
+          {/* Bottom Shadow - Lighter fade into void background */}
+          <div className="absolute inset-0 bg-gradient-to-t from-void via-void/25 to-transparent z-[5]" />
+          <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-void/80 to-transparent z-[5]" />
           
-          {/* Top Shadow - For navigation bar readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent z-[5]" />
-          
-          {/* Overall darkening for text contrast */}
-          <div className="absolute inset-0 bg-black/15 z-[4]" />
+          {/* Top Shadow - Lighter gradient for header readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent z-[5]" />
         </motion.div>
       </AnimatePresence>
 
@@ -250,7 +250,7 @@ export default function HeroBanner({ items }: HeroBannerProps) {
                 className="flex items-center gap-2.5 bg-white text-black font-bold text-[13px] px-7 py-3 rounded-full hover:bg-gray-200 transition-all active:scale-95 shadow-2xl"
               >
                 <Play size={18} fill="currentColor" />
-                Watch Now
+                {isManga ? 'Read Now' : 'Watch Now'}
               </Link>
 
               <button className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95">

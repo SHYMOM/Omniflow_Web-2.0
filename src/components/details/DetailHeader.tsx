@@ -75,7 +75,7 @@ export default function DetailHeader({ media, mediaType }: DetailHeaderProps) {
             <div className="flex flex-wrap gap-1.5 mb-3">
               <TypeBadge label={formatLabel} />
               {seasonLabel !== '?' && <TypeBadge label={seasonLabel} />}
-              {media.episodes && <TypeBadge label={`${media.episodes} eps`} />}
+              {item.episodeCount && <TypeBadge label={`${item.episodeCount} eps`} />}
             </div>
 
             {/* Actions */}

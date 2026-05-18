@@ -1,10 +1,10 @@
 import { 
-  getTrendingAnime, getUpcomingAnime, searchAniList, getAnimeDetail, 
+  getTrendingAnime, searchAniList, getAnimeDetail, 
   getAnimeByMalId, queryAniList, getAiringSchedule 
 } from './anilist';
 import type { AniListPageResponse } from '@/types/anilist';
 import { getSchedule, getTopAnime, searchJikan } from './jikan';
-import { getTrendingMovies, getTrendingTV, searchTMDB } from './tmdb';
+import { getTrendingMovies, getTrendingTV, searchTMDB, getMovieTrailerKey, getTVTrailerKey } from './tmdb';
 import type { AniListMedia } from '@/types/anilist';
 import type { JikanAnime } from '@/types/jikan';
 import type { TMDBMovie, TMDBTVShow } from '@/types/tmdb';
@@ -70,9 +70,9 @@ export function mapAniListToMediaItem(item: AniListMedia): MediaItem {
     source: 'anilist',
     type: item.type?.toLowerCase() as 'anime' | 'manga' || 'anime',
     title,
-    nativeTitle: item.title?.native,
+    nativeTitle: item.title?.native ?? undefined,
     posterUrl: item.coverImage?.extraLarge || item.coverImage?.large || '',
-    bannerUrl: item.bannerImage || undefined,
+    bannerUrl: item.bannerImage ?? undefined,
     description: safeStr(item.description),
     score: item.averageScore ? Number((item.averageScore / 10).toFixed(1)) : 0,
     year: item.seasonYear || item.startDate?.year || new Date().getFullYear(),
@@ -81,19 +81,21 @@ export function mapAniListToMediaItem(item: AniListMedia): MediaItem {
     formatLabel: item.format === 'TV' ? 'TV Show' : item.format === 'MOVIE' ? 'Movie' : item.format || 'TV',
     genres: item.genres || [],
     tags: item.tags?.map(t => t.name) || [],
-    episodeCount: item.episodes,
-    chapterCount: item.chapters,
+    episodeCount: item.episodes ?? undefined,
+    chapterCount: item.chapters ?? undefined,
     duration: item.duration ? `${item.duration} min` : undefined,
-    season: item.season,
-    seasonYear: item.seasonYear,
+    season: item.season ?? undefined,
+    seasonYear: item.seasonYear ?? undefined,
     trailerYoutubeId: item.trailer?.site === 'youtube' ? item.trailer.id : undefined,
-    malId: item.idMal,
+    malId: item.idMal ?? undefined,
     anilistId: item.id,
     studios: item.studios?.nodes?.map(n => n.name) || [],
-    countryOfOrigin: item.countryOfOrigin,
-    nextAiringEpisode: item.nextAiringEpisode,
-    sourceMedia: item.source,
-    startDate: item.startDate,
+    countryOfOrigin: item.countryOfOrigin ?? undefined,
+    nextAiringEpisode: item.nextAiringEpisode ?? undefined,
+    sourceMedia: item.source ?? undefined,
+    startDate: (item.startDate && typeof item.startDate.year === 'number' && typeof item.startDate.month === 'number' && typeof item.startDate.day === 'number')
+      ? { year: item.startDate.year, month: item.startDate.month, day: item.startDate.day }
+      : undefined,
     characters: item.characters?.edges?.map(e => ({
       id: e.node.id,
       name: e.node.name.full,
@@ -111,22 +113,27 @@ export function mapAniListToMediaItem(item: AniListMedia): MediaItem {
       image: e.node.image.large,
       role: e.role
     })),
-    recommendations: item.recommendations?.nodes?.map(n => n.mediaRecommendation).filter(Boolean).map(r => ({
-      id: `anilist-${r.id}`,
-      title: r.title.english || r.title.romaji || 'Unknown',
-      posterUrl: r.coverImage.large,
-      type: r.type?.toLowerCase() as any,
-      formatLabel: r.format,
-      year: r.seasonYear
-    })),
-    relations: item.relations?.edges?.map(e => ({
-      id: `anilist-${e.node.id}`,
-      title: e.node.title.english || e.node.title.romaji || 'Unknown',
-      posterUrl: e.node.coverImage.large,
-      type: e.node.type?.toLowerCase() as any,
-      relationType: e.relationType,
-      formatLabel: e.node.format
-    }))
+    recommendations: item.recommendations?.nodes
+      ?.map(n => n?.mediaRecommendation)
+      .filter((r): r is NonNullable<typeof r> => !!r)
+      .map(r => ({
+        id: `anilist-${r.id}`,
+        title: r.title?.english || r.title?.romaji || 'Unknown',
+        posterUrl: (r.coverImage as any)?.large || (r.coverImage as any)?.medium || '',
+        type: r.type?.toLowerCase() as any,
+        formatLabel: r.format || 'TV',
+        year: r.seasonYear ?? undefined
+      })) || [],
+    relations: item.relations?.edges
+      ?.filter((e): e is NonNullable<typeof e> => !!e && !!e.node)
+      .map(e => ({
+        id: `anilist-${e.node.id}`,
+        title: e.node.title?.english || e.node.title?.romaji || 'Unknown',
+        posterUrl: (e.node.coverImage as any)?.large || (e.node.coverImage as any)?.medium || '',
+        type: e.node.type?.toLowerCase() as any,
+        relationType: e.relationType || '',
+        formatLabel: e.node.format || 'TV'
+      })) || []
   };
 }
 
@@ -137,7 +144,7 @@ export function mapJikanToMediaItem(item: JikanAnime): MediaItem {
     source: 'jikan',
     type: 'anime',
     title,
-    nativeTitle: item.title_japanese,
+    nativeTitle: item.title_japanese || undefined,
     posterUrl: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '',
     bannerUrl: undefined,
     description: safeStr(item.synopsis),
@@ -147,8 +154,8 @@ export function mapJikanToMediaItem(item: JikanAnime): MediaItem {
     format: item.type || 'TV',
     formatLabel: item.type === 'TV' ? 'TV Show' : item.type || 'Anime',
     genres: item.genres?.map(g => g.name) || [],
-    episodeCount: item.episodes,
-    duration: item.duration,
+    episodeCount: item.episodes || undefined,
+    duration: item.duration || undefined,
     malId: item.mal_id,
     trailerYoutubeId: item.trailer?.youtube_id || undefined,
     studios: item.studios?.map(s => s.name) || [],
@@ -242,14 +249,17 @@ export function mapTMDBTVToMediaItem(tv: TMDBTVShow): MediaItem {
 /**
  * Fetch unified trending combining Anime, Movies, and TV Shows
  */
-export async function getHybridTrending(hideAdult = true): Promise<MediaItem[]> {
+export async function getHybridTrending(page: number | boolean = 1, hideAdult = true): Promise<MediaItem[]> {
+  const actualPage = typeof page === 'number' ? page : 1;
+  const actualHideAdult = typeof page === 'boolean' ? page : hideAdult;
+
   const items: MediaItem[] = [];
   try {
-    // Parallel fetch from multiple sources
+    // Parallel fetch from multiple sources with pagination
     const [anime, movies, tv] = await Promise.allSettled([
-      getTrendingAnime(10, 1, hideAdult),
-      getTrendingMovies('week', 1),
-      getTrendingTV('week', 1)
+      getTrendingAnime(10, actualPage, actualHideAdult),
+      getTrendingMovies('week', actualPage),
+      getTrendingTV('week', actualPage)
     ]);
 
     if (anime.status === 'fulfilled') {
@@ -332,7 +342,7 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
 
     // Fallback to AniList (limited info)
     try {
-      const media = await getAnimeDetail(numericId);
+      const media = await getAnimeDetail(String(numericId));
       if (media && media.episodes) {
         return Array.from({ length: media.episodes }, (_, i) => ({
           number: i + 1,
@@ -389,7 +399,7 @@ export async function searchHybrid(query: string, page = 1, hideAdult = true): P
 
   // Handle AniList Anime
   if (results[0].status === 'fulfilled') {
-    items.push(...results[0].value.media.map(mapAniListToMediaItem));
+    items.push(...(results[0].value.data?.Page?.media?.map(mapAniListToMediaItem) || []));
   } else {
     console.warn('AniList Anime search failed');
     try {
@@ -400,7 +410,7 @@ export async function searchHybrid(query: string, page = 1, hideAdult = true): P
 
   // Handle AniList Manga
   if (results[1].status === 'fulfilled') {
-    items.push(...results[1].value.media.map(mapAniListToMediaItem));
+    items.push(...(results[1].value.data?.Page?.media?.map(mapAniListToMediaItem) || []));
   }
 
   // Handle TMDB (Movies & TV)
@@ -434,22 +444,32 @@ export async function getHybridRecommendations(id: string, type: string): Promis
   
   if (type === 'anime') {
     try {
-      const media = await getAnimeDetail(numericId);
-      return media.recommendations?.nodes?.map(n => n.mediaRecommendation).filter(Boolean).map(r => ({
-        id: `anilist-${r.id}`,
-        title: r.title.english || r.title.romaji || 'Unknown',
-        posterUrl: r.coverImage.large,
-        type: 'anime' as any,
-        formatLabel: r.format,
-        year: r.seasonYear
-      })) || [];
+      const media = await getAnimeDetail(String(numericId));
+      return media.recommendations?.nodes
+        ?.map(n => n?.mediaRecommendation)
+        .filter((r): r is NonNullable<typeof r> => !!r)
+        .map((r: any) => ({
+          id: `anilist-${r.id}`,
+          source: 'anilist',
+          type: 'anime',
+          title: r.title?.english || r.title?.romaji || 'Unknown Title',
+          posterUrl: r.coverImage?.large || r.coverImage?.medium || '',
+          bannerUrl: undefined,
+          description: '',
+          score: r.averageScore ? Number((r.averageScore / 10).toFixed(1)) : 0,
+          year: r.seasonYear ?? new Date().getFullYear(),
+          status: r.status || 'FINISHED',
+          format: r.format || 'TV',
+          formatLabel: r.format || 'TV',
+          genres: [],
+        })) || [];
     } catch (err) {
       console.error('Hybrid recommendations failed for anime', err);
     }
   } else if (type === 'movie' || type === 'tv') {
     try {
       const res = await (await fetch(`/api/tmdb/${type}/${numericId}/recommendations`)).json();
-      return (res.results || []).slice(0, 12).map(item => {
+      return (res.results || []).slice(0, 12).map((item: any) => {
         if (type === 'movie') return mapTMDBMovieToMediaItem(item);
         return mapTMDBTVToMediaItem(item);
       });
