@@ -58,7 +58,7 @@ export default function MediaRow({
     return (
       <div className="flex gap-3 overflow-hidden">
         {Array.from({ length: skeletonCount }).map((_, i) => (
-          <div key={i} className="w-[150px] shrink-0">
+          <div key={i} className="w-[140px] sm:w-[150px] md:w-[160px] shrink-0">
             <SkeletonCard />
           </div>
         ))}
@@ -90,7 +90,7 @@ export default function MediaRow({
             if (seen.has(id)) return null;
             seen.add(id);
             return (
-              <div key={id} className="w-[150px] shrink-0">
+              <div key={id} className="w-[140px] sm:w-[150px] md:w-[160px] shrink-0">
                 <MediaCard media={media} showHoverCard={showHoverCard} />
               </div>
             );

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
 const ANILIST_URL = process.env.ANILIST_BASE_URL || 'https://graphql.anilist.co';
 
@@ -7,30 +8,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { query, variables } = body;
 
-    const response = await fetch(ANILIST_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+    const response = await axios.post(
+      ANILIST_URL,
+      { query, variables },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+      }
+    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: 'AniList API error', details: errorText },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('AniList proxy error:', error);
+    return NextResponse.json(response.data);
+  } catch (error: any) {
+    console.error('AniList proxy error:', error?.response?.data || error?.message || error);
     return NextResponse.json(
-      { error: 'Internal proxy error' },
-      { status: 500 }
+      { 
+        error: 'AniList API error', 
+        details: error?.response?.data || error?.message 
+      },
+      { status: error?.response?.status || 500 }
     );
   }
 }

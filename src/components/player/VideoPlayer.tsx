@@ -42,7 +42,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       {hasStarted && embedUrl && (
         <iframe
           src={embedUrl}
-          sandbox="allow-scripts allow-same-origin allow-forms"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-top-navigation-by-user-activation"
           allowFullScreen
           className="w-full h-full"
           title="Video Player"

@@ -19,13 +19,13 @@ export default function MediaGrid({
   items,
   loading = false,
   skeletonCount = 12,
-  columns = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
+  columns = 'grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]',
   className,
   showHoverCard = true,
 }: MediaGridProps) {
   if (loading) {
     return (
-      <div className={cn('grid gap-3', columns, className)}>
+      <div className={cn('grid gap-x-3 gap-y-5 md:gap-x-4 md:gap-y-6', columns, className)}>
         {Array.from({ length: skeletonCount }).map((_, i) => (
           <SkeletonCard key={i} />
         ))}
@@ -34,7 +34,7 @@ export default function MediaGrid({
   }
 
   return (
-    <div className={cn('grid gap-3', columns, className)}>
+    <div className={cn('grid gap-x-3 gap-y-5 md:gap-x-4 md:gap-y-6', columns, className)}>
       {(() => {
         const seen = new Set();
         return items.map((media) => {

@@ -162,7 +162,7 @@ export default function HeroBanner({ items }: HeroBannerProps) {
           {/* Video Trailer Layer */}
           {autoPlayTrailer && trailerYoutubeId && !videoError && (
             <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[112%] h-[112%]">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[130%] h-[130%]">
                 <YouTube
                   videoId={trailerYoutubeId}
                   opts={{
@@ -257,12 +257,14 @@ export default function HeroBanner({ items }: HeroBannerProps) {
                 <Bookmark size={18} />
               </button>
 
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95"
-              >
-                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-              </button>
+              {autoPlayTrailer && trailerYoutubeId && !videoError && (
+                <button
+                  onClick={() => setIsMuted(!isMuted)}
+                  className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95"
+                >
+                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                </button>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>

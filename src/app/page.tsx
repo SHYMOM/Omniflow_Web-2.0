@@ -69,7 +69,7 @@ export default function HomePage() {
           </div>
 
           {/* Right: Sidebar widgets (desktop only) */}
-          <div className="hidden xl:flex flex-col gap-4 w-[300px] shrink-0">
+          <div className="hidden xl:flex flex-col gap-4 w-[380px] shrink-0">
             <RecentComments />
             <ScheduleWidget />
           </div>

@@ -9,7 +9,7 @@ import {
   Info, X, ThumbsUp, ThumbsDown, Mic, Server as ServerIcon, 
   Share2, Download, Flag, MessageSquare, ChevronDown, ArrowUp 
 } from 'lucide-react';
-import { getAnimeDetail } from '@/lib/api/anilist';
+import { getAnimeDetail, getAnimeByMalId } from '@/lib/api/anilist';
 import { getMovieDetails, getTVDetails } from '@/lib/api/tmdb';
 import { getMediaEpisodes, extractId, getHybridRecommendations } from '@/lib/api/hybrid';
 import { usePlayerStore } from '@/store/playerStore';
@@ -41,9 +41,14 @@ function WatchContent() {
 
   // Unified fetch for any media type
   const { data: media, isLoading } = useQuery({
-    queryKey: ['media', mediaType, mediaId],
+    queryKey: ['media', mediaType, rawId],
     queryFn: async () => {
-      if (mediaType === 'anime') return getAnimeDetail(String(mediaId));
+      if (mediaType === 'anime') {
+        if (rawId.startsWith('mal-')) {
+          return getAnimeByMalId(String(mediaId));
+        }
+        return getAnimeDetail(String(mediaId));
+      }
       if (mediaType === 'movie') return getMovieDetails(Number(mediaId));
       if (mediaType === 'tv') return getTVDetails(Number(mediaId));
       return null;
@@ -71,7 +76,7 @@ function WatchContent() {
     ? (media as any)?.title?.romaji 
     : (media as any)?.title || (media as any)?.name;
 
-  const malId = (media as any)?.idMal || 0;
+  const malId = rawId.startsWith('mal-') ? mediaId : ((media as any)?.idMal || 0);
   const bannerImage = mediaType === 'anime'
     ? (media as any)?.bannerImage || (media as any)?.coverImage?.extraLarge
     : `https://image.tmdb.org/t/p/original${(media as any)?.backdrop_path}`;

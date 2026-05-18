@@ -28,7 +28,7 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
 
   const title = item.title || 'Unknown Title';
   const posterUrl = item.posterUrl || item.bannerUrl || '';
-  const scoreDisplay = item.score ? (item.source === 'anilist' ? `${Math.round(item.score * 10)}%` : `${item.score}`) : null;
+  const scoreDisplay = item.score ? (item.score > 10 ? (item.score / 10).toFixed(1) : item.score.toFixed(1)) : null;
   const isAiring = item.status === 'RELEASING';
   const formatLabel = item.formatLabel || 'TV Show';
   const year = item.year || '';
@@ -72,7 +72,7 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
   return (
     <div
       ref={cardRef}
-      className={cn('relative group cursor-pointer', className)}
+      className={cn('relative group cursor-pointer w-full', className)}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -91,8 +91,8 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
 
           {/* Premium rating capsule — top right */}
           {scoreDisplay && (
-            <div className="absolute top-2 right-2 bg-void/90 backdrop-blur-md border border-white/10 text-white text-[11px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shadow-md">
-              <Star size={10} className="text-accent-gold" fill="currentColor" />
+            <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-[2px] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] flex items-center gap-1 shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+              <Star size={9} className="text-accent-gold" fill="currentColor" stroke="none" />
               {scoreDisplay}
             </div>
           )}
@@ -108,11 +108,9 @@ export default function MediaCard({ media, className, showHoverCard = true }: Me
         </div>
 
         {/* Title row with exact status dot positioning */}
-        <div className="flex items-center gap-1.5 px-0.5 mt-0.5">
-          {isAiring && (
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-green shrink-0 animate-pulse" />
-          )}
-          <span className="text-xs font-bold text-white line-clamp-1 group-hover:text-accent-green transition-colors">
+        <div className="flex items-start gap-1.5 px-0.5 mt-1">
+          <span className="w-2 h-2 rounded-full bg-accent-green shrink-0 mt-[4px]" />
+          <span className="text-[12px] font-bold text-white leading-snug line-clamp-2 group-hover:text-accent-green transition-colors">
             {title}
           </span>
         </div>

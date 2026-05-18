@@ -15,35 +15,17 @@ interface CommentType {
   rating: number;
 }
 
-const FALLBACK_COMMENTS: CommentType[] = [
-  {
-    id: 1,
-    user: 'Kage_Sama',
-    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Kage_Sama',
-    text: 'The animation quality in this latest episode is absolutely breathtaking. Mappa really outdid themselves!',
-    targetTitle: 'Jujutsu Kaisen Season 2',
-    time: '5m ago',
-    rating: 5,
-  },
-  {
-    id: 2,
-    user: 'Sakura_Petal',
-    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=Sakura_Petal',
-    text: 'That plot twist at the end left me completely speechless. Cannot wait for the next broadcast chapter.',
-    targetTitle: 'Attack on Titan: Final Chapters',
-    time: '24m ago',
-    rating: 5,
-  },
-  {
-    id: 3,
-    user: 'OtakuGamer',
-    avatar: 'https://api.dicebear.com/9.x/adventurer/svg?seed=OtakuGamer',
-    text: 'Highly recommend watching this in crisp 1080p audio. The sound design is flawless.',
-    targetTitle: 'Chainsaw Man',
-    time: '1h ago',
-    rating: 4.5,
-  },
-];
+const getTimeAgo = (createdAt: number) => {
+  const diffMs = Date.now() - (createdAt * 1000);
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+};
 
 export default function RecentComments() {
   const [comments, setComments] = useState<CommentType[]>([]);
@@ -54,30 +36,32 @@ export default function RecentComments() {
       .then((data) => {
         if (data && data.length > 0) {
           const mapped = data.map((item: any, index: number) => {
-            const ratingScore = item.rating || item.score || 80; // default to 4 stars
+            const ratingScore = item.rating || item.score || 80;
+            const createdTime = item.createdAt || (Math.floor(Date.now() / 1000) - (index * 3600));
             return {
               id: item.id || index,
-              user: item.user?.name || 'Kage_Sama',
+              user: item.user?.name || 'MAL User',
               avatar: item.user?.avatar?.large || `https://api.dicebear.com/9.x/adventurer/svg?seed=${item.user?.name || index}`,
-              text: item.summary || 'Excellent production value and story progression. Highly recommended!',
+              text: item.summary || 'Great series!',
               targetTitle: item.media?.title?.english || item.media?.title?.romaji || 'Anime Series',
-              // Distribute dates slightly so they feel organic (e.g. 5m ago, 24m ago, 1h ago)
-              time: index === 0 ? '6m ago' : index === 1 ? '35m ago' : '2h ago',
+              time: getTimeAgo(createdTime),
               rating: Math.max(1, Math.min(5, Math.round(ratingScore / 20))),
             };
           });
           setComments(mapped);
         } else {
-          setComments(FALLBACK_COMMENTS);
+          setComments([]);
         }
         setLoading(false);
       })
       .catch((err) => {
         console.error('Error in RecentComments fetch', err);
-        setComments(FALLBACK_COMMENTS);
+        setComments([]);
         setLoading(false);
       });
   }, []);
+
+  if (!loading && comments.length === 0) return null;
 
   return (
     <section className="bg-surface rounded-xl p-4 border border-border">

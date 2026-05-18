@@ -18,7 +18,7 @@ interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
-  activeServerId: 'vidsrc-icu',
+  activeServerId: 'vidsrc_to',
   setActiveServer: (id) => set({ activeServerId: id }),
   currentMediaId: null,
   setCurrentMediaId: (id) => set({ currentMediaId: id }),
