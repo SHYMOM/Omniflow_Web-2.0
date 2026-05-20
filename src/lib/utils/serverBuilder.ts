@@ -21,7 +21,9 @@ export function buildEmbedUrl(
 
   // Replace placeholders
   if (params.tmdbId) url = url.replace('{tmdbId}', String(params.tmdbId));
-  if (params.malId) url = url.replace('{malId}', String(params.malId));
+  if (params.malId != null) {
+    url = url.replace('{malId}', String(params.malId || params.tmdbId || ''));
+  }
   if (params.season != null) url = url.replace('{season}', String(params.season));
   if (params.episode != null) url = url.replace('{episode}', String(params.episode));
   if (params.chapter != null) url = url.replace('{chapter}', String(params.chapter));

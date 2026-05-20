@@ -18,7 +18,7 @@ interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
-  activeServerId: 'vidsrc_to',
+  activeServerId: 'omniflow_direct',
   setActiveServer: (id) => set({ activeServerId: id }),
   currentMediaId: null,
   setCurrentMediaId: (id) => set({ currentMediaId: id }),

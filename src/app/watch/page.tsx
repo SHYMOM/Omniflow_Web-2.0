@@ -27,6 +27,7 @@ function WatchContent() {
   const mediaId = extractId(rawId);
   const mediaType = searchParams.get('type') || 'anime';
   const epNum = Number(searchParams.get('ep') || '1');
+  const seasonNum = Number(searchParams.get('season') || '1');
 
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
   const { activeServerId, setActiveServer } = usePlayerStore();
@@ -112,7 +113,22 @@ function WatchContent() {
 
   // Filter available servers array for the overlay switcher
   const patternKey = mediaType === 'anime' ? 'anime_sub' : mediaType === 'movie' ? 'movie' : 'tv';
-  const availableServers = serversList.filter(s => s.status === 'active' && s.patterns[patternKey as keyof typeof s.patterns]);
+  const availableServers = [
+    {
+      id: 'omniflow_direct',
+      name: 'OmniFlow Player (Premium HLS)',
+      baseUrl: '',
+      patterns: {
+        movie: 'direct',
+        tv: 'direct',
+        anime_sub: 'direct',
+        anime_dub: 'direct'
+      },
+      status: 'active',
+      recommended: true
+    },
+    ...serversList.filter(s => s.status === 'active' && s.patterns[patternKey as keyof typeof s.patterns])
+  ];
 
   return (
     <div className="max-w-[1550px] mx-auto px-4 md:px-6 py-4 pt-20">
@@ -135,7 +151,7 @@ function WatchContent() {
               tmdbId={mediaId}
               mediaType={mediaType}
               episode={epNum}
-              season={1}
+              season={seasonNum}
               serverId={activeServerId}
             />
           </div>
