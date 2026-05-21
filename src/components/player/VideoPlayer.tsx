@@ -319,14 +319,37 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   // ─── DIRECT NATIVE HTML5 HLS VIDEO PLAYER ──────────────────────────────
   if (isDirectStream && streamUrl) {
     return (
-      <div 
-        ref={containerRef}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => isPlaying && setShowControls(false)}
-        className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-border group select-none cursor-pointer"
-        onClick={handlePlayPause}
-      >
-        <video
+      <div className="flex flex-col w-full h-full">
+        {/* DEBUG URL TOAST */}
+        <div className="bg-void border-b border-accent-green/30 p-2 flex items-center justify-between gap-2 shadow-[0_0_15px_rgba(0,230,118,0.1)]">
+          <span className="text-[10px] font-bold text-accent-green uppercase shrink-0">Stream URL:</span>
+          <input 
+            type="text" 
+            readOnly 
+            value={streamUrl} 
+            className="flex-1 bg-surface/50 border border-border/50 text-[10px] text-text-secondary px-2 py-1 rounded font-mono outline-none"
+            onClick={(e) => (e.target as HTMLInputElement).select()}
+          />
+          <button 
+            onClick={() => {
+              navigator.clipboard.writeText(streamUrl);
+              alert('Copied stream URL to clipboard!');
+            }}
+            className="text-[10px] bg-accent-green/10 text-accent-green hover:bg-accent-green/20 px-2 py-1 rounded font-bold cursor-pointer transition-colors"
+          >
+            Copy
+          </button>
+        </div>
+        
+        <div 
+          ref={containerRef}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => isPlaying && setShowControls(false)}
+          className="relative w-full flex-1 min-h-0 aspect-video overflow-hidden bg-black group select-none cursor-pointer"
+          onClick={handlePlayPause}
+        >
+          <video
+
           ref={videoRef}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
@@ -507,6 +530,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             </div>
           </div>
         </div>
+      </div>
       </div>
     );
   }

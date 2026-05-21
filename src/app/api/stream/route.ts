@@ -1,23 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
-import { ANIME, MOVIES, StreamingServers } from '@/lib/consumet';
+import { AnimeExtractionService, MovieExtractionService } from '@/lib/extraction';
+import type { IStreamResult, ExtractionContext } from '@/types/extraction-types';
 
-// Standardized direct stream interfaces
-interface StreamSubtitle {
-  label: string;
-  url: string;
-  lang: string;
-  default?: boolean;
-}
+// ─── Singleton service instances (reused across requests) ────
+const animeService = new AnimeExtractionService();
+const movieService = new MovieExtractionService();
 
-interface DirectStreamResponse {
+// ─── Response interface (backward compatible with existing frontend) ─
+interface StreamApiResponse {
   success: boolean;
   source: 'direct' | 'iframe';
   url?: string;
   downloadUrl?: string;
-  subtitles?: StreamSubtitle[];
+  subtitles?: Array<{
+    label: string;
+    url: string;
+    lang: string;
+    default?: boolean;
+  }>;
+  iframeUrl?: string;
+  provider?: string;
+  intro?: { start: number; end: number };
+  outro?: { start: number; end: number };
 }
 
+/**
+ * GET /api/stream
+ *
+ * Unified streaming endpoint. Delegates to AnimeExtractionService
+ * or MovieExtractionService based on media type.
+ *
+ * Query params:
+ *   - type:    'anime' | 'movie' | 'tv'
+ *   - id:      Canonical media ID (e.g. 'anilist-21', 'tmdb-movie-550')
+ *   - episode: Episode number (default 1)
+ *   - season:  Season number (default 1, for TV only)
+ *   - dubbed:  'true' | 'false' (for anime sub/dub preference)
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -25,163 +44,107 @@ export async function GET(request: NextRequest) {
     const id = searchParams.get('id') || '';
     const episode = Number(searchParams.get('episode') || '1');
     const season = Number(searchParams.get('season') || '1');
+    const isDubbed = searchParams.get('dubbed') === 'true';
 
     if (!id) {
-      return NextResponse.json({ success: false, source: 'iframe' }, { status: 400 });
+      return NextResponse.json<StreamApiResponse>(
+        { success: false, source: 'iframe' },
+        { status: 400 }
+      );
     }
 
-    const TMDB_KEY = process.env.TMDB_API_KEY || '52243a8565a58e657e3348126d400e9d';
+    let streamResult: IStreamResult;
 
-    // ─── ANIME DIRECT LOCAL RESOLVER ──────────────────────────────────
+    // ─── ANIME ─────────────────────────────────────────────
     if (mediaType === 'anime') {
-      let resolvedTitle = '';
-      
-      // Step A: Resolve anime title via AniList API (or MAL ID)
-      try {
-        const cleanId = id.replace('anilist-', '').replace('mal-', '');
-        const variables = id.includes('mal') ? { idMal: Number(cleanId) } : { id: Number(cleanId) };
-        const aniListQuery = `
-          query ($id: Int, $idMal: Int) {
-            Media(id: $id, idMal: $idMal, type: ANIME) {
-              title { english romaji }
-            }
-          }
-        `;
-        const graphRes = await axios.post('https://graphql.anilist.co', {
-          query: aniListQuery,
-          variables
-        }, { timeout: 3500 });
-        
-        const media = graphRes.data?.data?.Media;
-        resolvedTitle = media?.title?.english || media?.title?.romaji || '';
-      } catch (err) {
-        console.warn('Anime direct stream: AniList title lookup timed out, trying search heuristics');
-      }
+      // Resolve title first
+      const title = await animeService.resolveTitle(id);
 
-      if (!resolvedTitle) {
-        resolvedTitle = id.replace('anilist-', '').replace('mal-', '').replace(/-/g, ' ');
-      }
+      const ctx: ExtractionContext = {
+        mediaId: id,
+        title,
+        episode,
+        mediaType: 'anime',
+        isDubbed,
+      };
 
-      // Step B: Search & Extract via Gogoanime direct scraper
-      try {
-        const gogo = new ANIME.Gogoanime();
-        const searchRes = await gogo.search(resolvedTitle);
-        const matchedAnime = searchRes.results?.[0];
+      streamResult = await animeService.extractSources(ctx);
+    }
+    // ─── MOVIES & TV ───────────────────────────────────────
+    else if (mediaType === 'movie' || mediaType === 'tv') {
+      const title = await movieService.resolveTitle(id, mediaType as 'movie' | 'tv');
 
-        if (matchedAnime?.id) {
-          const info = await gogo.fetchAnimeInfo(matchedAnime.id);
-          const targetEpisode = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+      const ctx: ExtractionContext = {
+        mediaId: id,
+        title,
+        episode,
+        season,
+        mediaType: mediaType as 'movie' | 'tv',
+      };
 
-          if (targetEpisode?.id) {
-            // Cascade through servers starting with VidStreaming/GogoCDN
-            const watchSources = await gogo.fetchEpisodeSources(targetEpisode.id, StreamingServers.VidStreaming)
-              .catch(() => gogo.fetchEpisodeSources(targetEpisode.id, StreamingServers.GogoCDN))
-              .catch(() => gogo.fetchEpisodeSources(targetEpisode.id, StreamingServers.StreamWish));
-
-            const defaultSource = watchSources.sources.find((s: any) => s.isM3U8) || watchSources.sources[0];
-
-            if (defaultSource?.url) {
-              const subtitles: StreamSubtitle[] = (watchSources.subtitles || []).map((sub: any) => ({
-                label: sub.lang || 'English',
-                url: sub.url,
-                lang: sub.lang?.toLowerCase().substring(0, 2) || 'en',
-                default: sub.lang?.toLowerCase() === 'english' || sub.lang?.toLowerCase() === 'en'
-              }));
-
-              const watchReferer = watchSources.headers?.Referer || watchSources.headers?.referer || 'https://anitaku.pe/';
-              const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(defaultSource.url)}&referer=${encodeURIComponent(watchReferer)}`;
-
-              return NextResponse.json<DirectStreamResponse>({
-                success: true,
-                source: 'direct',
-                url: proxiedUrl,
-                downloadUrl: watchSources.download || defaultSource.url,
-                subtitles
-              });
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Anime direct local scraper failed:', e);
-      }
+      streamResult = await movieService.extractSources(ctx);
+    }
+    // ─── UNKNOWN TYPE ──────────────────────────────────────
+    else {
+      return NextResponse.json<StreamApiResponse>({
+        success: false,
+        source: 'iframe',
+      });
     }
 
-    // ─── MOVIES & TV DIRECT LOCAL RESOLVER ─────────────────────────────
-    if (mediaType === 'movie' || mediaType === 'tv') {
-      let resolvedTitle = '';
-      const tmdbId = id.replace('tmdb-movie-', '').replace('tmdb-tv-', '');
+    // ─── FORMAT RESPONSE ───────────────────────────────────
 
-      // Step A: Fetch title from TMDB API
-      try {
-        const tmdbRes = await axios.get(
-          `https://api.themoviedb.org/3/${mediaType === 'tv' ? 'tv' : 'movie'}/${tmdbId}?api_key=${TMDB_KEY}`,
-          { timeout: 3500 }
-        );
-        resolvedTitle = tmdbRes.data?.title || tmdbRes.data?.name || tmdbRes.data?.original_title || '';
-      } catch (err) {
-        console.warn('Movies/TV direct stream: TMDB title lookup failed');
-      }
+    if (streamResult.success && streamResult.sources.length > 0) {
+      // Find best source (prefer .m3u8)
+      const defaultSource =
+        streamResult.sources.find(s => s.isM3U8) || streamResult.sources[0];
 
-      if (resolvedTitle) {
-        // Step B: Search & Extract via FlixHQ direct scraper
-        try {
-          const flixhq = new MOVIES.FlixHQ();
-          const searchRes = await flixhq.search(resolvedTitle);
-          const matchedMovie = searchRes.results?.find((item: any) => 
-            mediaType === 'movie' ? item.type === 'movie' : item.type === 'tv'
-          ) || searchRes.results?.[0];
+      // Proxy the source URL through our stream proxy
+      const referer = streamResult.headers?.Referer || '';
+      const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(defaultSource.url)}&referer=${encodeURIComponent(referer)}`;
 
-          if (matchedMovie?.id) {
-            const info = await flixhq.fetchMediaInfo(matchedMovie.id);
-            const targetEpisode = mediaType === 'movie' 
-              ? info.episodes?.[0]
-              : info.episodes?.find((ep: any) => ep.season === season && ep.number === episode);
+      // Map subtitles to response format
+      const subtitles = streamResult.subtitles.map(sub => ({
+        label: sub.label,
+        url: sub.url,
+        lang: sub.lang,
+        default: sub.default,
+      }));
 
-            if (targetEpisode?.id) {
-              const watchSources = await flixhq.fetchEpisodeSources(targetEpisode.id, matchedMovie.id, StreamingServers.UpCloud)
-                .catch(() => flixhq.fetchEpisodeSources(targetEpisode.id, matchedMovie.id, StreamingServers.VidCloud))
-                .catch(() => flixhq.fetchEpisodeSources(targetEpisode.id, matchedMovie.id, StreamingServers.MixDrop));
-
-              const defaultSource = watchSources.sources.find((s: any) => s.isM3U8) || watchSources.sources[0];
-
-              if (defaultSource?.url) {
-                const subtitles: StreamSubtitle[] = (watchSources.subtitles || []).map((sub: any) => ({
-                  label: sub.lang || 'English',
-                  url: sub.url,
-                  lang: sub.lang?.toLowerCase().substring(0, 2) || 'en',
-                  default: sub.lang?.toLowerCase() === 'english' || sub.lang?.toLowerCase() === 'en'
-                }));
-
-                const watchReferer = watchSources.headers?.Referer || watchSources.headers?.referer || 'https://flixhq.to/';
-                const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(defaultSource.url)}&referer=${encodeURIComponent(watchReferer)}`;
-
-                return NextResponse.json<DirectStreamResponse>({
-                  success: true,
-                  source: 'direct',
-                  url: proxiedUrl,
-                  downloadUrl: defaultSource.url,
-                  subtitles
-                });
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Movies/TV direct local scraper failed:', e);
-        }
-      }
+      return NextResponse.json<StreamApiResponse>({
+        success: true,
+        source: 'direct',
+        url: proxiedUrl,
+        downloadUrl: streamResult.download || defaultSource.url,
+        subtitles,
+        provider: streamResult.provider,
+        intro: streamResult.intro,
+        outro: streamResult.outro,
+      });
     }
 
-    // Default Fallback: Instruct Player to mount iframe sandbox cleanly
-    return NextResponse.json<DirectStreamResponse>({
+    // ─── FALLBACK TO IFRAME ────────────────────────────────
+
+    // If we have a VidSrc iframe URL, return it
+    if (streamResult.iframeUrl) {
+      return NextResponse.json<StreamApiResponse>({
+        success: false,
+        source: 'iframe',
+        iframeUrl: streamResult.iframeUrl,
+        provider: streamResult.provider,
+      });
+    }
+
+    // Default fallback
+    return NextResponse.json<StreamApiResponse>({
       success: false,
-      source: 'iframe'
+      source: 'iframe',
     });
-
-  } catch (error) {
-    console.error('Unified Direct Streaming API error:', error);
-    return NextResponse.json<DirectStreamResponse>({
-      success: false,
-      source: 'iframe'
-    }, { status: 500 });
+  } catch (error: any) {
+    console.error('[API /stream] Error:', error?.message || error);
+    return NextResponse.json<StreamApiResponse>(
+      { success: false, source: 'iframe' },
+      { status: 500 }
+    );
   }
 }

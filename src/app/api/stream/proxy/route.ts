@@ -43,8 +43,41 @@ export async function GET(request: NextRequest) {
       headers['Range'] = rangeHeader;
     }
 
-    // Determine if it's a playlist or a chunk/segment
+    // Determine content type from URL
     const isPlaylist = targetUrl.includes('.m3u8') || targetUrl.includes('m3u8');
+    const isImage = /\.(jpe?g|png|webp|gif|avif|bmp)(\?|$)/i.test(targetUrl);
+
+    // ─── IMAGE PROXY (for manga pages) ────────────────────────
+    if (isImage) {
+      const response = await axios.get(targetUrl, {
+        headers,
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        validateStatus: () => true,
+      });
+
+      // Detect content type from response or URL extension
+      let contentType: string = String(response.headers['content-type'] || 'image/jpeg');
+      if (!contentType.startsWith('image/')) {
+        const ext = targetUrl.match(/\.(jpe?g|png|webp|gif|avif|bmp)/i)?.[1]?.toLowerCase();
+        const mimeMap: Record<string, string> = {
+          jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          png: 'image/png', webp: 'image/webp',
+          gif: 'image/gif', avif: 'image/avif', bmp: 'image/bmp',
+        };
+        contentType = mimeMap[ext || 'jpg'] || 'image/jpeg';
+      }
+
+      return new NextResponse(response.data, {
+        status: response.status,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': contentType,
+          'Content-Length': String(response.data.byteLength || 0),
+          'Cache-Control': 'public, max-age=3600, immutable',
+        },
+      });
+    }
 
     if (isPlaylist) {
       // Fetch playlist as text, rewrite relative and absolute URLs to proxy through this endpoint
@@ -87,62 +120,62 @@ export async function GET(request: NextRequest) {
         },
       });
     } else {
-      // Stream segment or raw MP4 files
+      // ─── VIDEO SEGMENT / TS CHUNK PROXY ─────────────────────────
+      // Many pirate CDNs wrap real MPEG-TS video data inside fake PNG images
+      // to hide them on image CDNs (e.g. TikTok ByteDance ibyteimg.com).
+      // We must download the full chunk, detect the PNG wrapper, strip it,
+      // and serve only the raw MPEG-TS bytes to hls.js.
+
       const response = await axios.get(targetUrl, {
         headers,
-        responseType: 'stream',
+        responseType: 'arraybuffer',
         timeout: 15000,
-        validateStatus: () => true, // Pipe back all status codes (like 206 Partial Content)
+        validateStatus: () => true,
       });
 
-      // Forward target headers that are critical for browser playback
-      const responseHeaders: Record<string, string> = {
-        ...corsHeaders,
-      };
+      let buffer = Buffer.from(response.data);
+      let contentType = 'video/mp2t';
 
-      const copyHeaders = [
-        'content-type',
-        'content-length',
-        'content-range',
-        'accept-ranges',
-        'cache-control',
-      ];
+      // PNG magic bytes: 89 50 4E 47 (hex for \x89PNG)
+      const isPNG = buffer.length > 70 &&
+        buffer[0] === 0x89 && buffer[1] === 0x50 &&
+        buffer[2] === 0x4E && buffer[3] === 0x47;
 
-      for (const h of copyHeaders) {
-        const val = response.headers[h];
-        if (val !== undefined) {
-          responseHeaders[h] = String(val);
+      if (isPNG) {
+        // The CDN wraps TS data inside a minimal 1x1 PNG (IHDR+IDAT+IEND).
+        // PNG structure: 8-byte signature, then length(4)+type(4)+data(N)+crc(4) chunks.
+        // We parse the PNG chunk structure to find where IEND ends,
+        // then the real MPEG-TS data starts immediately after.
+        let offset = 8; // skip PNG signature
+        while (offset + 8 <= buffer.length) {
+          const chunkLen = buffer.readUInt32BE(offset);
+          const chunkType = buffer.slice(offset + 4, offset + 8).toString('ascii');
+          offset += 12 + chunkLen; // 4(len) + 4(type) + data + 4(crc)
+          if (chunkType === 'IEND') break;
         }
+
+        if (offset < buffer.length) {
+          // Strip the PNG wrapper — everything after IEND is real video
+          buffer = buffer.slice(offset);
+        }
+        contentType = 'video/mp2t';
+      } else if (buffer.length > 0 && buffer[0] === 0x47) {
+        // Already raw MPEG-TS
+        contentType = 'video/mp2t';
+      } else {
+        // Unknown format — pass through as-is
+        const upstreamCT = String(response.headers['content-type'] || '');
+        contentType = upstreamCT.includes('image/') ? 'video/mp2t' : (upstreamCT || 'application/octet-stream');
       }
 
-      // Add default content-type if missing
-      if (!responseHeaders['content-type']) {
-        if (targetUrl.includes('.ts')) {
-          responseHeaders['content-type'] = 'video/mp2t';
-        } else {
-          responseHeaders['content-type'] = 'application/octet-stream';
-        }
-      }
-
-      // Read from the axios readable stream
-      const stream = new ReadableStream({
-        async start(controller) {
-          response.data.on('data', (chunk: Buffer) => {
-            controller.enqueue(new Uint8Array(chunk));
-          });
-          response.data.on('end', () => {
-            controller.close();
-          });
-          response.data.on('error', (err: Error) => {
-            controller.error(err);
-          });
-        },
-      });
-
-      return new NextResponse(stream, {
+      return new NextResponse(buffer, {
         status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': contentType,
+          'Content-Length': String(buffer.length),
+          'Cache-Control': 'public, max-age=300',
+        },
       });
     }
   } catch (error: any) {
