@@ -74,6 +74,8 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hlsRef = useRef<any>(null);
+  const hlsRetryCountRef = useRef<number>(0);
+  const HLS_MAX_RETRIES = 3;
 
   // 1. Fetch server configs for iframe fallback
   useEffect(() => {
@@ -129,7 +131,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             setIsDirectStream(true);
             
             // Backend provides available languages for hardcoded streams
-            if (data.availableLanguages) {
+            if (data.availableLanguages && data.availableLanguages.length > 0) {
                setBackendLangs(data.availableLanguages);
                setAvailableLanguages(data.availableLanguages);
             }
@@ -137,7 +139,14 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             const defaultSub = data.subtitles?.find((s: any) => s.default);
             if (defaultSub) setActiveSubtitle(defaultSub.lang);
           } else {
-            setIsDirectStream(false);
+            // If the stream failed to resolve AND we explicitly requested a dub, switch back to sub
+            if (language !== 'sub') {
+              alert(`${language === 'hin' ? 'Hindi' : 'English'} dub not found! Switching back to original...`);
+              setLanguage('sub');
+              return; // The language state change will trigger a re-fetch
+            } else {
+              setIsDirectStream(false);
+            }
           }
           setIsLoading(false);
         }
@@ -164,7 +173,9 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       hlsRef.current = null;
     }
 
-    if (streamUrl.includes('.mp4') || (streamUrl.includes('ext=.mp4'))) {
+    const isHls = streamUrl.includes('ext=.m3u8') || (streamUrl.includes('.m3u8') && !streamUrl.includes('ext=.mp4'));
+    
+    if (!isHls) {
       video.src = streamUrl;
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = streamUrl;
@@ -173,7 +184,20 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         const Hls = (window as any).Hls;
         if (!Hls) return;
 
-        const hls = new Hls({ maxMaxBufferLength: 30, enableWorker: true });
+        // Reset retry counter for fresh initialization
+        hlsRetryCountRef.current = 0;
+
+        const hls = new Hls({
+          maxMaxBufferLength: 30,
+          enableWorker: true,
+          // Generous retry settings for flaky pirate CDNs
+          fragLoadPolicy: {
+            default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 30000, timeoutRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 8000 }, errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 } }
+          },
+          manifestLoadPolicy: {
+            default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: { maxNumRetry: 3, retryDelayMs: 1000, maxRetryDelayMs: 4000 }, errorRetry: { maxNumRetry: 3, retryDelayMs: 1000, maxRetryDelayMs: 4000 } }
+          },
+        });
         hls.loadSource(streamUrl);
         hls.attachMedia(video);
         hlsRef.current = hls;
@@ -214,18 +238,39 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
         hls.on(Hls.Events.ERROR, (event: any, data: any) => {
           if (data.fatal) {
+            console.warn(`[HLS] Fatal error type=${data.type} details=${data.details} retry=${hlsRetryCountRef.current}/${HLS_MAX_RETRIES}`);
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad();
+                if (hlsRetryCountRef.current < HLS_MAX_RETRIES) {
+                  hlsRetryCountRef.current++;
+                  console.log(`[HLS] Network error, retrying (${hlsRetryCountRef.current}/${HLS_MAX_RETRIES})...`);
+                  hls.startLoad();
+                } else {
+                  console.error('[HLS] Network error retries exhausted, giving up.');
+                  setIsDirectStream(false);
+                }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
+                if (hlsRetryCountRef.current < HLS_MAX_RETRIES) {
+                  hlsRetryCountRef.current++;
+                  console.log(`[HLS] Media error, recovering (${hlsRetryCountRef.current}/${HLS_MAX_RETRIES})...`);
+                  hls.recoverMediaError();
+                } else {
+                  console.error('[HLS] Media error retries exhausted, giving up.');
+                  setIsDirectStream(false);
+                }
                 break;
               default:
+                console.error('[HLS] Unrecoverable error, giving up.');
                 setIsDirectStream(false);
                 break;
             }
           }
+        });
+
+        // Reset retry counter on successful fragment load (stream is working)
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+          hlsRetryCountRef.current = 0;
         });
       };
 
@@ -398,11 +443,28 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             onLoadedMetadata={handleLoadedMetadata}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
+            onError={(e) => {
+              const video = videoRef.current;
+              // Ignore empty source/mount errors
+              if (!video || !video.src || video.src === window.location.href) {
+                return;
+              }
+              // When hls.js is active, it handles errors internally via its own
+              // error event. The <video> element may fire spurious errors during
+              // normal HLS recovery (e.g. segment retries, media error recovery).
+              // Only kill the player if hls.js is NOT managing playback.
+              if (hlsRef.current) {
+                console.warn('[VideoPlayer] Suppressed <video> onError while hls.js is active');
+                return;
+              }
+              console.error('Video playback failed', e);
+              setIsDirectStream(false);
+            }}
             className="w-full h-full object-contain"
             crossOrigin="anonymous"
             playsInline
           >
-            {subtitles.map((sub, i) => (
+            {subtitles.filter(sub => sub.url && !sub.lang.startsWith('hls-')).map((sub, i) => (
               <track key={i} label={sub.label} src={sub.url} srcLang={sub.lang} kind="subtitles" default={sub.lang === activeSubtitle} />
             ))}
           </video>

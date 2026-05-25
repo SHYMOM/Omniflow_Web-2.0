@@ -268,7 +268,7 @@ export async function getRecentlyUpdatedAnime(perPage = 18, page = 1, hideAdult 
   const query = `
     query ($perPage: Int, $page: Int, $end: Int) {
       Page(perPage: $perPage, page: $page) {
-        airingSchedules(airingAt_less: $end, sort: TIME_DESC) {
+        airingSchedules(airingAt_lesser: $end, sort: TIME_DESC) {
           airingAt
           episode
           media {
@@ -532,7 +532,7 @@ export async function getAiringSchedule(start: number, end: number): Promise<any
   const query = `
     query ($start: Int, $end: Int) {
       Page(perPage: 50) {
-        airingSchedules(airingAt_greater: $start, airingAt_less: $end) {
+        airingSchedules(airingAt_greater: $start, airingAt_lesser: $end) {
           media {
             id idMal title { romaji english native }
             coverImage { extraLarge large }

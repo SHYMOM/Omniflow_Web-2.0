@@ -18,7 +18,6 @@ import { ProviderRegistry, type ProviderEntry } from './provider-registry';
 import { StealthHttpClient } from './stealth-client';
 import { PLAYWRIGHT_ENABLED, PLAYWRIGHT_TIMEOUT_MS } from './extraction-config';
 import { getCachedStream, setCachedStream } from '@/lib/cache/redis';
-import { UltimateAggregator } from './ultimate-aggregator';
 import { PlaywrightExtractor } from './playwright-extractor';
 import { MovieboxExtractor } from './moviebox-extractor';
 
@@ -105,10 +104,12 @@ export class MovieExtractionService {
     const cached = await getCachedStream(cacheKey);
     if (cached) return cached;
 
+    const isHindi = ctx.language === 'hin';
+
     const providers: ProviderEntry<IStreamResult>[] = [
       {
         name: 'cinepro-core',
-        priority: 0,
+        priority: isHindi ? 1 : 0,
         mediaTypes: ['movie', 'tv'],
         execute: async () => {
           const { CineproAggregator } = await import('./cinepro-aggregator');
@@ -131,7 +132,7 @@ export class MovieExtractionService {
       },
       {
         name: 'stremio-addons',
-        priority: 1,
+        priority: isHindi ? 2 : 1,
         mediaTypes: ['movie', 'tv'],
         execute: async () => {
           const { StremioExtractor } = await import('./stremio-extractor');
@@ -140,13 +141,13 @@ export class MovieExtractionService {
       },
       {
         name: 'moviebox',
-        priority: 2,
+        priority: isHindi ? 3 : 2,
         mediaTypes: ['movie', 'tv'],
         execute: () => new MovieboxExtractor().extractDirectStream(title, mediaType, episode, season),
       },
       {
         name: 'smashystream',
-        priority: 4,
+        priority: isHindi ? 0 : 4,
         mediaTypes: ['movie', 'tv'],
         execute: () => this.extractFromSmashyStream(tmdbId, mediaType, episode, season),
       },
@@ -173,6 +174,7 @@ export class MovieExtractionService {
     const result = await this.registry.executeConcurrently(providers);
 
     if (result.success && result.data) {
+      result.data.availableLanguages = ['eng', 'hin'];
       await setCachedStream(cacheKey, result.data, 10800); // 3 hours
       return result.data;
     }

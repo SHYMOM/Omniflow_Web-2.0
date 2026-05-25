@@ -97,7 +97,7 @@ export class MangaExtractionService {
       },
     ];
 
-    const result = await this.registry.executeWithCascade(providers);
+    const result = await this.registry.executeConcurrently(providers);
 
     if (result.success && result.data) {
       return result.data;

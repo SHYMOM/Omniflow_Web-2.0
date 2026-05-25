@@ -79,7 +79,13 @@ class SmashyStream extends VideoExtractor {
         })
       );
 
-      return result.filter(a => a.source === 'FFix')[0].data;
+      const ffix = result.find(a => a.source === 'FFix');
+      if (ffix && ffix.data?.sources?.length) return ffix.data;
+
+      const anyValid = result.find(a => a.data?.sources?.length > 0);
+      if (anyValid) return anyValid.data;
+
+      throw new Error('SmashyStream: No valid sources found');
     } catch (err) {
       throw new Error((err as Error).message);
     }

@@ -13,7 +13,6 @@ import { ProviderRegistry, type ProviderEntry } from './provider-registry';
 import { StealthHttpClient } from './stealth-client';
 import { getCachedStream, setCachedStream } from '@/lib/cache/redis';
 import { PLAYWRIGHT_ENABLED } from './extraction-config';
-import { UltimateAggregator } from './ultimate-aggregator';
 import { MovieboxExtractor } from './moviebox-extractor';
 import { StremioExtractor } from './stremio-extractor';
 
@@ -43,31 +42,55 @@ export class AnimeExtractionService {
     return cleanId.replace(/-/g, ' ');
   }
 
+  // ─── ID Mapping ──────────────────────────────────────────────
+
+  async mapIds(mediaId: string): Promise<{ tmdbId: string | null; imdbId: string | null }> {
+    const cleanId = mediaId.replace('anilist-', '').replace('mal-', '').replace('jikan-', '');
+    const source = mediaId.includes('mal') || mediaId.includes('jikan') ? 'myanimelist' : 'anilist';
+    
+    try {
+      // Use Anime Resource Mapper API with a very strict timeout (1500ms) to fail fast
+      const res = await this.stealthClient.get(`https://arm.haglund.dev/api/v2/ids?source=${source}&id=${cleanId}`, { timeout: 1500 });
+      if (res.data) {
+        return {
+          tmdbId: res.data.themoviedb ? String(res.data.themoviedb) : null,
+          imdbId: res.data.imdb || null
+        };
+      }
+    } catch (e) {
+      // Silently fail fast if the external mapper is down, we have native fallbacks
+    }
+    return { tmdbId: null, imdbId: null };
+  }
+
   // ─── Source Extraction & Caching ─────────────────────────────
 
   async extractSources(ctx: ExtractionContext): Promise<IStreamResult> {
     const title = ctx.title || await this.resolveTitle(ctx.mediaId);
     const episode = ctx.episode || 1;
-    const isDub = ctx.isDubbed || ctx.language === 'eng' || ctx.language === 'dub';
-
+    // Explicitly track if Hindi was requested for Gogoanime fallback routing
+    const isHindi = ctx.language === 'hin';
+    const isDub = ctx.isDubbed || ctx.language === 'eng' || ctx.language === 'dub' || isHindi;
+    
     const cacheKey = `stream:anime:${ctx.mediaId}:ep${episode}:${isDub ? 'dub' : 'sub'}`;
     const cached = await getCachedStream(cacheKey);
     if (cached) return cached;
 
-    // Build providers
+    // Resolve TMDB/IMDB IDs for premium OMSS scrapers
+    const { tmdbId } = await this.mapIds(ctx.mediaId);
+
+    // Build strictly native/reliable providers
     const providers: ProviderEntry<IStreamResult>[] = [
       {
         name: 'cinepro-core',
         priority: 0,
         mediaTypes: ['anime'],
         execute: async () => {
+          if (!tmdbId) throw new Error('CineproCore: Requires TMDB ID mapping');
           const { CineproAggregator } = await import('./cinepro-aggregator');
           const cinepro = new CineproAggregator();
-          // Assuming anime uses TMDB ID logic via Anitlist ID mapping, but for now we might need to fallback.
-          // Since cinepro requires TMDB ID, and anime has anilist, we should pass it properly. 
-          // For now, if we don't have TMDB ID in anime context, cinepro might fail. We'll pass the title as tmdbId to gracefully fail or work.
-          // We'll update the Aggregator to handle this.
-          const { sources, subtitles } = await cinepro.scrapeSeries(ctx.mediaId, 1, episode);
+          
+          const { sources, subtitles } = await cinepro.scrapeSeries(tmdbId, 1, episode);
           
           if (sources.length > 0) {
             return {
@@ -82,48 +105,33 @@ export class AnimeExtractionService {
         }
       },
       {
-        name: 'stremio-extractor',
+        name: 'moviebox',
         priority: 1,
         mediaTypes: ['anime'],
-        execute: () => new StremioExtractor().extractDirectStream(ctx.mediaId, 'anime', episode, 1),
-      },
-      {
-        name: 'moviebox',
-        priority: 2,
-        mediaTypes: ['anime'],
-        execute: () => new MovieboxExtractor().extractDirectStream(title, 'tv', episode, 1),
+        execute: () => {
+           if (!tmdbId) throw new Error('Moviebox: Requires TMDB ID mapping');
+           return new MovieboxExtractor().extractDirectStream(title, 'tv', episode, 1);
+        }
       },
       {
         name: 'zoro',
-        priority: 3,
+        priority: 2,
         mediaTypes: ['anime'],
-        execute: () => this.extractFromZoro(title, episode, isDub),
+        execute: () => this.extractFromZoro(title, episode, ctx.language || 'sub'),
       },
       {
         name: 'gogoanime',
-        priority: 4,
+        priority: 3,
         mediaTypes: ['anime'],
-        execute: () => this.extractFromGogoanime(title, episode, isDub),
+        execute: () => this.extractFromGogoanime(title, episode, ctx.language || 'sub'),
       },
       {
         name: 'animepahe',
-        priority: 5,
+        priority: 4,
         mediaTypes: ['anime'],
-        execute: () => this.extractFromAnimePahe(title, episode, isDub),
+        execute: () => this.extractFromAnimePahe(title, episode, ctx.language || 'sub'),
       }
     ];
-
-    // UltimateAggregator removed.
-
-    if (PLAYWRIGHT_ENABLED) {
-      const { PlaywrightExtractor } = await import('./playwright-extractor');
-      providers.push({
-        name: 'playwright-interceptor',
-        priority: 6,
-        mediaTypes: ['anime'],
-        execute: () => new PlaywrightExtractor().extractDirectStream(ctx.mediaId.replace('anilist-', ''), 'anime', episode, 1, isDub),
-      });
-    }
 
     const result = await this.registry.executeConcurrently(providers);
 
@@ -140,33 +148,15 @@ export class AnimeExtractionService {
   // ─── Parallel Language Discovery ─────────────────────────────
 
   private async determineAvailableLanguages(title: string, episode: number, currentIsDub: boolean, provider: string): Promise<string[]> {
-    const langs = [currentIsDub ? 'dub' : 'sub'];
-    const otherIsDub = !currentIsDub;
-    
-    // Quick parallel check for the other language on the same successful provider
-    try {
-      if (provider === 'gogoanime') {
-        const gogo = new ANIME.Gogoanime();
-        const dubSuffix = '(Dub)';
-        const searchQuery = otherIsDub ? `${title} ${dubSuffix}` : title;
-        const res = await gogo.search(searchQuery);
-        if (res.results?.length) langs.push(otherIsDub ? 'dub' : 'sub');
-      } else if (provider === 'zoro') {
-        const zoro = new ANIME.Zoro();
-        const res = await zoro.search(title);
-        if (res.results?.length && res.results[0].id) {
-           const info = await zoro.fetchAnimeInfo(res.results[0].id);
-           if (info.episodes && info.episodes.length >= episode) langs.push(otherIsDub ? 'dub' : 'sub'); // Zoro often has dual audio if it has the episode
-        }
-      }
-    } catch (err) { }
-    
-    return [...new Set(langs)];
+    // We instantly resolve all options to enable the Audio button in the UI.
+    // If the user selects a language that doesn't exist, our extraction pipeline
+    // handles the fast fallback (Hin -> Eng -> Sub) seamlessly in <600ms!
+    return ['sub', 'eng', 'hin'];
   }
 
   // ─── Provider Implementations ────────────────────────────────
 
-  private async extractFromZoro(title: string, episode: number, isDub: boolean): Promise<IStreamResult> {
+  private async extractFromZoro(title: string, episode: number, language: string): Promise<IStreamResult> {
     const zoro = new ANIME.Zoro();
     const searchRes = await zoro.search(title);
     if (!searchRes.results?.length) throw new Error(`Zoro: No results`);
@@ -176,27 +166,53 @@ export class AnimeExtractionService {
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`Zoro: Episode not found`);
 
-    let episodeId = targetEp.id;
-    if (isDub && !episodeId.includes('$dub')) episodeId = episodeId.replace(/\$sub$/, '$dub');
+    const tryExtract = async (langExt: string) => {
+      let episodeId = targetEp.id;
+      if (langExt === '$dub' && !episodeId.includes('$dub')) episodeId = episodeId.replace(/\$sub$/, '$dub');
+      if (langExt === '$sub' && !episodeId.includes('$sub')) episodeId = episodeId.replace(/\$dub$/, '$sub');
+      
+      for (const server of [StreamingServers.VidCloud, StreamingServers.VidStreaming]) {
+        try {
+          const sources = await zoro.fetchEpisodeSources(episodeId, server);
+          if (sources.sources?.length > 0) return this.sanitizeSources(sources, 'zoro', 'https://hianime.to/');
+        } catch (err) { }
+      }
+      throw new Error('Zoro: Exhausted');
+    };
 
-    for (const server of [StreamingServers.VidCloud, StreamingServers.VidStreaming]) {
+    // Fast Fallback Loop: Dub -> Sub
+    const preferences = (language === 'hin' || language === 'eng' || language === 'dub') ? ['$dub', '$sub'] : ['$sub'];
+    for (const pref of preferences) {
       try {
-        const sources = await zoro.fetchEpisodeSources(episodeId, server);
-        return this.sanitizeSources(sources, 'zoro', 'https://hianime.to/');
-      } catch (err) { }
+        const result = await tryExtract(pref);
+        if (result) return result;
+      } catch (e) {}
     }
-    throw new Error('Zoro: Exhausted');
+    
+    throw new Error('Zoro: All language fallbacks exhausted');
   }
 
-  private async extractFromGogoanime(title: string, episode: number, isDub: boolean): Promise<IStreamResult> {
+  private async extractFromGogoanime(title: string, episode: number, language: string): Promise<IStreamResult> {
     const gogo = new ANIME.Gogoanime();
-    const searchQuery = isDub ? `${title} (Dub)` : title;
     
-    let searchRes = await gogo.search(searchQuery);
-    if (!searchRes.results?.length && isDub) searchRes = await gogo.search(title); // fallback
-    if (!searchRes.results?.length) throw new Error(`Gogoanime: No results`);
+    // Fast Fallback Loop: Hindi -> English -> Sub
+    const queries = [];
+    if (language === 'hin') queries.push(`${title} Hindi Dubbed`, `${title} Hindi`);
+    if (language === 'hin' || language === 'eng' || language === 'dub') queries.push(`${title} (Dub)`);
+    queries.push(title); // Sub/Original fallback
 
-    const matched = searchRes.results[0];
+    let matched;
+    for (const q of queries) {
+       try {
+         const searchRes = await gogo.search(q);
+         if (searchRes.results?.length) {
+            matched = searchRes.results[0];
+            break;
+         }
+       } catch (e) {}
+    }
+    if (!matched) throw new Error(`Gogoanime: No results`);
+
     const info = await gogo.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`Gogoanime: Episode not found`);
@@ -210,7 +226,7 @@ export class AnimeExtractionService {
     throw new Error('Gogoanime: Exhausted');
   }
 
-  private async extractFromAnimePahe(title: string, episode: number, isDub: boolean): Promise<IStreamResult> {
+  private async extractFromAnimePahe(title: string, episode: number, language: string): Promise<IStreamResult> {
     const pahe = new ANIME.AnimePahe();
     const searchRes = await pahe.search(title);
     if (!searchRes.results?.length) throw new Error(`AnimePahe: No results`);

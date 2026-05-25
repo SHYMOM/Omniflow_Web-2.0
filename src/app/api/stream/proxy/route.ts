@@ -94,12 +94,14 @@ export async function GET(request: NextRequest) {
         const trimmed = line.trim();
         if (!trimmed) return line;
 
-        // Case 1: Decryption Key lines
-        if (trimmed.startsWith('#EXT-X-KEY:')) {
-          return trimmed.replace(/URI="([^"]+)"/, (match, keyUrl) => {
-            const resolvedKeyUrl = new URL(keyUrl, parentUrl.href).href;
-            const proxyKeyUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(resolvedKeyUrl)}&referer=${encodeURIComponent(referer)}`;
-            return `URI="${proxyKeyUrl}"`;
+        // Case 1: Any tag with a URI="..." attribute (e.g. #EXT-X-KEY, #EXT-X-MEDIA, #EXT-X-MAP)
+        // We proxy key URIs instead of stripping them — the player has proper retry logic
+        // to handle broken/fake keys without crashing.
+        if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
+          return trimmed.replace(/URI="([^"]+)"/g, (match, urlValue) => {
+            const resolvedUrl = new URL(urlValue, parentUrl.href).href;
+            const proxyUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(resolvedUrl)}&referer=${encodeURIComponent(referer)}`;
+            return `URI="${proxyUrl}"`;
           });
         }
 
@@ -154,6 +156,15 @@ export async function GET(request: NextRequest) {
         timeout: 15000,
         validateStatus: () => true,
       });
+
+      // If the upstream CDN returned an error (404, 403, etc.), forward the error
+      // instead of serving HTML error pages as fake video data to hls.js
+      if (response.status >= 400) {
+        return new NextResponse(`Upstream error: ${response.status}`, {
+          status: response.status,
+          headers: corsHeaders,
+        });
+      }
 
       let buffer = Buffer.from(response.data);
       let contentType = 'video/mp2t';

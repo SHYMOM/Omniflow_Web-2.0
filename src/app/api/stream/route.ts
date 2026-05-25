@@ -104,24 +104,58 @@ export async function GET(request: NextRequest) {
       const defaultSource =
         streamResult.sources.find(s => s.isM3U8) || streamResult.sources[0];
 
+      let finalUrl = defaultSource.url;
+      let finalReferer = streamResult.headers?.Referer || '';
+      
+      // Extract real URL if wrapped in OMSS proxy format
+      if (finalUrl.includes('/v1/proxy?data=')) {
+        try {
+          const urlObj = new URL(finalUrl.startsWith('http') ? finalUrl : `http://localhost${finalUrl}`);
+          const dataParam = urlObj.searchParams.get('data');
+          if (dataParam) {
+            const parsed = JSON.parse(dataParam);
+            if (parsed.url) finalUrl = parsed.url;
+            if (parsed.headers?.Referer) finalReferer = parsed.headers.Referer;
+          }
+        } catch(e) {}
+      }
+
       // Proxy the source URL through our stream proxy
-      const referer = streamResult.headers?.Referer || '';
       const extension = defaultSource.isM3U8 ? '&ext=.m3u8' : '&ext=.mp4';
-      const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(defaultSource.url)}&referer=${encodeURIComponent(referer)}${extension}`;
+      const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(finalUrl)}&referer=${encodeURIComponent(finalReferer)}${extension}`;
 
       // Map subtitles to response format
-      const subtitles = streamResult.subtitles.map(sub => ({
-        label: sub.label,
-        url: sub.url,
-        lang: sub.lang,
-        default: sub.default,
-      }));
+      const subtitles = streamResult.subtitles.map(sub => {
+        let subUrl = sub.url;
+        let subReferer = '';
+        if (subUrl.includes('/v1/proxy?data=')) {
+          try {
+            const urlObj = new URL(subUrl.startsWith('http') ? subUrl : `http://localhost${subUrl}`);
+            const dataParam = urlObj.searchParams.get('data');
+            if (dataParam) {
+              const parsed = JSON.parse(dataParam);
+              if (parsed.url) subUrl = parsed.url;
+              if (parsed.headers?.Referer) subReferer = parsed.headers.Referer;
+            }
+          } catch(e) {}
+        }
+        
+        // Proxy subtitle URLs as well to avoid CORS issues
+        const proxySubUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(subUrl)}&referer=${encodeURIComponent(subReferer)}`;
+        
+        return {
+          label: sub.label,
+          url: proxySubUrl,
+          lang: sub.lang,
+          default: sub.default,
+        };
+      });
 
       return NextResponse.json<StreamApiResponse>({
         success: true,
         source: 'direct',
         url: proxiedUrl,
-        downloadUrl: streamResult.download || defaultSource.url,
+        downloadUrl: streamResult.download || finalUrl,
         subtitles,
         provider: streamResult.provider,
         intro: streamResult.intro,

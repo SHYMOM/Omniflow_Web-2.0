@@ -7,11 +7,9 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 // Prevent multiple connections during hot-reloading in dev
 const globalForRedis = global as unknown as { redis: Redis };
 export const redis = globalForRedis.redis || new Redis(redisUrl, {
-  maxRetriesPerRequest: 3,
-  retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  }
+  maxRetriesPerRequest: 0, // FAIL FAST: Do not retry if Redis is down
+  commandTimeout: 1000,    // 1 second timeout maximum
+  retryStrategy: () => null // Disable automatic reconnection spam
 });
 
 if (process.env.NODE_ENV !== 'production') globalForRedis.redis = redis;

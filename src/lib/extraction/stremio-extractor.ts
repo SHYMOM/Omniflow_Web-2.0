@@ -16,11 +16,12 @@ export class StremioExtractor {
 
   async extractDirectStream(
     tmdbId: string,
-    mediaType: 'movie' | 'tv',
+    mediaType: 'movie' | 'tv' | 'anime',
     episode?: number,
-    season?: number
+    season?: number,
+    preResolvedImdbId?: string
   ): Promise<IStreamResult> {
-    const imdbId = await this.getImdbId(tmdbId, mediaType);
+    const imdbId = preResolvedImdbId || await this.getImdbId(tmdbId, mediaType as 'movie' | 'tv');
     console.log("IMDB ID:", imdbId);
     if (!imdbId) {
       return this.emptyResult();

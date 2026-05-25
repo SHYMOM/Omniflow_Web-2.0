@@ -12,12 +12,12 @@ export class CineproAggregator {
   ];
 
   async scrapeMovie(tmdbId: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const media: ProviderMediaObject = { type: 'movie', tmdbId };
+    const media: ProviderMediaObject = { type: 'movie', tmdbId } as any;
     return this.scrape(media);
   }
 
   async scrapeSeries(tmdbId: string, season: number, episode: number): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const media: ProviderMediaObject = { type: 'tv', tmdbId, s: season, e: episode };
+    const media: ProviderMediaObject = { type: 'tv', tmdbId, s: season, e: episode } as any;
     return this.scrape(media);
   }
 

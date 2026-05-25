@@ -39,65 +39,87 @@ export class ProviderRegistry {
   async executeConcurrently<T>(
     providers: ProviderEntry<T>[]
   ): Promise<IProviderResult<T>> {
-    const promises = providers.map(async (provider) => {
-      // Check circuit breaker
-      if (!this.circuitBreaker.isAvailable(provider.name)) {
-        console.warn(`[ProviderRegistry] Skipping ${provider.name} — circuit OPEN`);
-        throw new Error(`Circuit OPEN for ${provider.name}`);
-      }
-
-      if (this.circuitBreaker.getState(provider.name) === 'HALF_OPEN') {
-        this.circuitBreaker.recordProbeAttempt(provider.name);
-      }
-
-      const startTime = Date.now();
-
-      try {
-        const result = await Promise.race([
-          provider.execute(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Provider ${provider.name} timed out`)), PROVIDER_TIMEOUT_MS)
-          ),
-        ]);
-
-        const latencyMs = Date.now() - startTime;
-        
-        // Basic check for extraction result validity
-        if ((result as any)?.success === false) {
-           throw new Error(`${provider.name} returned success: false`);
+    // 1. Fire all provider requests immediately at T=0 for maximum concurrency
+    const executions = providers.map((provider) => {
+      const promise = (async () => {
+        if (!this.circuitBreaker.isAvailable(provider.name)) {
+          console.warn(`[ProviderRegistry] Skipping ${provider.name} — circuit OPEN`);
+          throw new Error(`Circuit OPEN for ${provider.name}`);
         }
 
-        this.circuitBreaker.recordSuccess(provider.name);
-        console.log(`[ProviderRegistry] ✓ ${provider.name} succeeded in ${latencyMs}ms`);
+        if (this.circuitBreaker.getState(provider.name) === 'HALF_OPEN') {
+          this.circuitBreaker.recordProbeAttempt(provider.name);
+        }
 
-        return {
-          success: true,
-          provider: provider.name,
-          data: result,
-          latencyMs,
-        } as IProviderResult<T>;
-      } catch (err) {
-        const latencyMs = Date.now() - startTime;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        this.circuitBreaker.recordFailure(provider.name);
-        console.warn(`[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`);
-        throw new Error(`${provider.name}: ${errorMsg}`);
-      }
+        const startTime = Date.now();
+        try {
+          const result = await Promise.race([
+            provider.execute(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Provider ${provider.name} timed out`)), PROVIDER_TIMEOUT_MS)
+            ),
+          ]);
+
+          const latencyMs = Date.now() - startTime;
+          
+          if ((result as any)?.success === false) {
+             throw new Error(`${provider.name} returned success: false`);
+          }
+
+          this.circuitBreaker.recordSuccess(provider.name);
+          console.log(`[ProviderRegistry] ✓ ${provider.name} succeeded in ${latencyMs}ms`);
+
+          return {
+            success: true,
+            provider: provider.name,
+            data: result,
+            latencyMs,
+          } as IProviderResult<T>;
+        } catch (err) {
+          const latencyMs = Date.now() - startTime;
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          this.circuitBreaker.recordFailure(provider.name);
+          console.warn(`[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`);
+          throw new Error(`${provider.name}: ${errorMsg}`);
+        }
+      })();
+      // Attach a no-op catch to prevent unhandled rejection warnings when
+      // a lower-priority provider rejects after we've already resolved a winner.
+      promise.catch(() => {});
+      return promise;
     });
 
-    try {
-      // Return the FIRST successful resolved promise
-      const winner = await Promise.any(promises);
-      return winner;
-    } catch (aggregateError) {
-      // If ALL providers fail
-      return {
-        success: false,
-        provider: 'none',
-        error: 'All providers failed concurrently',
-        latencyMs: 0,
-      };
+    // 2. Group the execution promises by priority tier
+    const tiers = new Map<number, Promise<IProviderResult<T>>[]>();
+    for (let i = 0; i < providers.length; i++) {
+      const priority = providers[i].priority;
+      if (!tiers.has(priority)) tiers.set(priority, []);
+      tiers.get(priority)!.push(executions[i]);
     }
+
+    const sortedPriorities = Array.from(tiers.keys()).sort((a, b) => a - b);
+
+    // 3. Resolve tiers sequentially. 
+    // Since all promises are already running, if a lower tier finished earlier, 
+    // it will resolve instantly when its tier is reached.
+    for (const priority of sortedPriorities) {
+      try {
+        const tierPromises = tiers.get(priority)!;
+        const winner = await Promise.any(tierPromises);
+        return winner;
+      } catch (aggregateError) {
+        // All providers in this tier failed, gracefully fall back to the next tier
+        continue;
+      }
+    }
+
+    // If we exhaust all tiers and everything failed
+    return {
+      success: false,
+      provider: 'none',
+      error: 'All providers failed concurrently across all tiers',
+      latencyMs: 0,
+    };
   }
 
   /**
