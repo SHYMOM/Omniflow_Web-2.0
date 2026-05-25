@@ -34,6 +34,7 @@ export interface IStreamResult {
   outro?: IStreamMarker;
   download?: string;
   iframeUrl?: string;    // Fallback embed URL when direct extraction fails
+  availableLanguages?: string[]; // Discovered languages ('sub', 'dub', etc.)
 }
 
 // ─── Manga Page Extraction ───────────────────────────────────
@@ -85,6 +86,7 @@ export interface ExtractionContext {
   season?: number;
   mediaType: MediaType;
   isDubbed?: boolean;      // For anime sub/dub preference
+  language?: string;       // Preferred language: 'sub', 'eng', 'hin'
 }
 
 export interface IProviderResult<T> {

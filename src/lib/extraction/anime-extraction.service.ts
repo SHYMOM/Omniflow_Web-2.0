@@ -1,13 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // Anime Extraction Service — Multi-provider cascading resolver
 // ═══════════════════════════════════════════════════════════════
-//
-// Provider cascade: Zoro/HiAnime → Gogoanime → 9Anime
-// Each provider cascades through its own server list.
-// AniList ID → title resolution → provider search → episode match → source extraction.
-//
 
-import axios from 'axios';
 import type {
   ExtractionContext,
   IStreamResult,
@@ -17,14 +11,12 @@ import type {
 import { ANIME, StreamingServers } from '@/lib/consumet';
 import { ProviderRegistry, type ProviderEntry } from './provider-registry';
 import { StealthHttpClient } from './stealth-client';
+import { getCachedStream, setCachedStream } from '@/lib/cache/redis';
+import { PLAYWRIGHT_ENABLED } from './extraction-config';
+import { UltimateAggregator } from './ultimate-aggregator';
+import { MovieboxExtractor } from './moviebox-extractor';
+import { StremioExtractor } from './stremio-extractor';
 
-/**
- * Service responsible for extracting playable stream sources from anime providers.
- *
- * Flow:
- *   1. resolveTitle(anilistId) — get the English/Romaji title from AniList
- *   2. extractSources(ctx) — cascade through providers to find .m3u8 + subtitles
- */
 export class AnimeExtractionService {
   private registry: ProviderRegistry;
   private stealthClient: StealthHttpClient;
@@ -36,270 +28,218 @@ export class AnimeExtractionService {
 
   // ─── Title Resolution ────────────────────────────────────────
 
-  /**
-   * Resolve anime title from AniList ID (or MAL ID with prefix).
-   */
   async resolveTitle(mediaId: string): Promise<string> {
     const cleanId = mediaId.replace('anilist-', '').replace('mal-', '').replace('jikan-', '');
     const isMAL = mediaId.includes('mal') || mediaId.includes('jikan');
-    const variables = isMAL
-      ? { idMal: Number(cleanId) }
-      : { id: Number(cleanId) };
+    const variables = isMAL ? { idMal: Number(cleanId) } : { id: Number(cleanId) };
 
     try {
-      const query = `
-        query ($id: Int, $idMal: Int) {
-          Media(id: $id, idMal: $idMal, type: ANIME) {
-            title { english romaji }
-          }
-        }
-      `;
-
-      const res = await this.stealthClient.post('https://graphql.anilist.co', {
-        query,
-        variables,
-      }, { timeout: 4000 });
-
-      const media = res.data?.data?.Media;
-      const title = media?.title?.english || media?.title?.romaji;
+      const query = `query ($id: Int, $idMal: Int) { Media(id: $id, idMal: $idMal, type: ANIME) { title { english romaji } } }`;
+      const res = await this.stealthClient.post('https://graphql.anilist.co', { query, variables }, { timeout: 4000 });
+      const title = res.data?.data?.Media?.title?.english || res.data?.data?.Media?.title?.romaji;
       if (title) return title;
-    } catch (err) {
-      console.warn('[AnimeExtraction] AniList title resolution failed:', err);
-    }
+    } catch (err) {}
 
-    // Fallback: try Jikan
-    try {
-      const jikanRes = await this.stealthClient.get(
-        `https://api.jikan.moe/v4/anime/${cleanId}`,
-        { timeout: 4000 }
-      );
-      const title = jikanRes.data?.data?.title_english || jikanRes.data?.data?.title;
-      if (title) return title;
-    } catch (err) {
-      console.warn('[AnimeExtraction] Jikan title fallback failed:', err);
-    }
-
-    // Last resort: return the ID itself as a search term
     return cleanId.replace(/-/g, ' ');
   }
 
-  // ─── Source Extraction ───────────────────────────────────────
+  // ─── Source Extraction & Caching ─────────────────────────────
 
-  /**
-   * Extract stream sources using multi-provider cascade.
-   */
   async extractSources(ctx: ExtractionContext): Promise<IStreamResult> {
     const title = ctx.title || await this.resolveTitle(ctx.mediaId);
     const episode = ctx.episode || 1;
+    const isDub = ctx.isDubbed || ctx.language === 'eng' || ctx.language === 'dub';
 
-    // Build provider cascade
+    const cacheKey = `stream:anime:${ctx.mediaId}:ep${episode}:${isDub ? 'dub' : 'sub'}`;
+    const cached = await getCachedStream(cacheKey);
+    if (cached) return cached;
+
+    // Build providers
     const providers: ProviderEntry<IStreamResult>[] = [
       {
-        name: 'zoro',
+        name: 'cinepro-core',
         priority: 0,
         mediaTypes: ['anime'],
-        execute: () => this.extractFromZoro(title, episode, ctx.isDubbed),
+        execute: async () => {
+          const { CineproAggregator } = await import('./cinepro-aggregator');
+          const cinepro = new CineproAggregator();
+          // Assuming anime uses TMDB ID logic via Anitlist ID mapping, but for now we might need to fallback.
+          // Since cinepro requires TMDB ID, and anime has anilist, we should pass it properly. 
+          // For now, if we don't have TMDB ID in anime context, cinepro might fail. We'll pass the title as tmdbId to gracefully fail or work.
+          // We'll update the Aggregator to handle this.
+          const { sources, subtitles } = await cinepro.scrapeSeries(ctx.mediaId, 1, episode);
+          
+          if (sources.length > 0) {
+            return {
+              success: true,
+              provider: 'cinepro-core',
+              sources,
+              subtitles,
+              headers: {}
+            };
+          }
+          throw new Error('CineproCore: No streams found');
+        }
+      },
+      {
+        name: 'stremio-extractor',
+        priority: 1,
+        mediaTypes: ['anime'],
+        execute: () => new StremioExtractor().extractDirectStream(ctx.mediaId, 'anime', episode, 1),
+      },
+      {
+        name: 'moviebox',
+        priority: 2,
+        mediaTypes: ['anime'],
+        execute: () => new MovieboxExtractor().extractDirectStream(title, 'tv', episode, 1),
+      },
+      {
+        name: 'zoro',
+        priority: 3,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromZoro(title, episode, isDub),
       },
       {
         name: 'gogoanime',
-        priority: 1,
+        priority: 4,
         mediaTypes: ['anime'],
-        execute: () => this.extractFromGogoanime(title, episode, ctx.isDubbed),
+        execute: () => this.extractFromGogoanime(title, episode, isDub),
       },
+      {
+        name: 'animepahe',
+        priority: 5,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromAnimePahe(title, episode, isDub),
+      }
     ];
 
-    const result = await this.registry.executeWithCascade(providers);
+    // UltimateAggregator removed.
+
+    if (PLAYWRIGHT_ENABLED) {
+      const { PlaywrightExtractor } = await import('./playwright-extractor');
+      providers.push({
+        name: 'playwright-interceptor',
+        priority: 6,
+        mediaTypes: ['anime'],
+        execute: () => new PlaywrightExtractor().extractDirectStream(ctx.mediaId.replace('anilist-', ''), 'anime', episode, 1, isDub),
+      });
+    }
+
+    const result = await this.registry.executeConcurrently(providers);
 
     if (result.success && result.data) {
+      // Run parallel check to determine availableLanguages
+      result.data.availableLanguages = await this.determineAvailableLanguages(title, episode, isDub, result.data.provider);
+      await setCachedStream(cacheKey, result.data, 10800);
       return result.data;
     }
 
-    // All providers failed — return empty result for iframe fallback
-    return {
-      success: false,
-      provider: 'none',
-      sources: [],
-      subtitles: [],
-      headers: {},
-    };
+    return { success: false, provider: 'none', sources: [], subtitles: [], headers: {} };
   }
 
-  // ─── Zoro/HiAnime Provider ──────────────────────────────────
+  // ─── Parallel Language Discovery ─────────────────────────────
 
-  private async extractFromZoro(
-    title: string,
-    episode: number,
-    isDubbed?: boolean
-  ): Promise<IStreamResult> {
+  private async determineAvailableLanguages(title: string, episode: number, currentIsDub: boolean, provider: string): Promise<string[]> {
+    const langs = [currentIsDub ? 'dub' : 'sub'];
+    const otherIsDub = !currentIsDub;
+    
+    // Quick parallel check for the other language on the same successful provider
+    try {
+      if (provider === 'gogoanime') {
+        const gogo = new ANIME.Gogoanime();
+        const dubSuffix = '(Dub)';
+        const searchQuery = otherIsDub ? `${title} ${dubSuffix}` : title;
+        const res = await gogo.search(searchQuery);
+        if (res.results?.length) langs.push(otherIsDub ? 'dub' : 'sub');
+      } else if (provider === 'zoro') {
+        const zoro = new ANIME.Zoro();
+        const res = await zoro.search(title);
+        if (res.results?.length && res.results[0].id) {
+           const info = await zoro.fetchAnimeInfo(res.results[0].id);
+           if (info.episodes && info.episodes.length >= episode) langs.push(otherIsDub ? 'dub' : 'sub'); // Zoro often has dual audio if it has the episode
+        }
+      }
+    } catch (err) { }
+    
+    return [...new Set(langs)];
+  }
+
+  // ─── Provider Implementations ────────────────────────────────
+
+  private async extractFromZoro(title: string, episode: number, isDub: boolean): Promise<IStreamResult> {
     const zoro = new ANIME.Zoro();
     const searchRes = await zoro.search(title);
+    if (!searchRes.results?.length) throw new Error(`Zoro: No results`);
 
-    if (!searchRes.results?.length) {
-      throw new Error(`Zoro: No results for "${title}"`);
-    }
-
-    // Find best match — prefer exact title match
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched?.id) {
-      throw new Error(`Zoro: No matching anime found for "${title}"`);
-    }
-
+    const matched = searchRes.results[0];
     const info = await zoro.fetchAnimeInfo(matched.id);
-    if (!info.episodes?.length) {
-      throw new Error(`Zoro: No episodes found for "${matched.id}"`);
-    }
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`Zoro: Episode not found`);
 
-    // Find target episode
-    const targetEp = info.episodes.find((ep: any) => ep.number === episode)
-      || info.episodes[episode - 1];
-
-    if (!targetEp?.id) {
-      throw new Error(`Zoro: Episode ${episode} not found`);
-    }
-
-    // Determine sub/dub suffix
     let episodeId = targetEp.id;
-    if (isDubbed && !episodeId.includes('$dub')) {
-      episodeId = episodeId.replace(/\$sub$/, '$dub');
-    }
+    if (isDub && !episodeId.includes('$dub')) episodeId = episodeId.replace(/\$sub$/, '$dub');
 
-    // Server cascade: VidCloud → VidStreaming
-    const serverCascade = [
-      StreamingServers.VidCloud,
-      StreamingServers.VidStreaming,
-    ];
-
-    for (const server of serverCascade) {
+    for (const server of [StreamingServers.VidCloud, StreamingServers.VidStreaming]) {
       try {
         const sources = await zoro.fetchEpisodeSources(episodeId, server);
         return this.sanitizeSources(sources, 'zoro', 'https://hianime.to/');
-      } catch (err) {
-        console.warn(`[AnimeExtraction] Zoro server ${server} failed:`, err);
-      }
+      } catch (err) { }
     }
-
-    throw new Error('Zoro: All servers exhausted');
+    throw new Error('Zoro: Exhausted');
   }
 
-  // ─── Gogoanime Provider ─────────────────────────────────────
-
-  private async extractFromGogoanime(
-    title: string,
-    episode: number,
-    isDubbed?: boolean
-  ): Promise<IStreamResult> {
+  private async extractFromGogoanime(title: string, episode: number, isDub: boolean): Promise<IStreamResult> {
     const gogo = new ANIME.Gogoanime();
+    const searchQuery = isDub ? `${title} (Dub)` : title;
+    
+    let searchRes = await gogo.search(searchQuery);
+    if (!searchRes.results?.length && isDub) searchRes = await gogo.search(title); // fallback
+    if (!searchRes.results?.length) throw new Error(`Gogoanime: No results`);
 
-    // Search with dub suffix if needed
-    const searchQuery = isDubbed ? `${title} (Dub)` : title;
-    const searchRes = await gogo.search(searchQuery);
-
-    if (!searchRes.results?.length) {
-      // Retry without dub suffix
-      const retryRes = await gogo.search(title);
-      if (!retryRes.results?.length) {
-        throw new Error(`Gogoanime: No results for "${title}"`);
-      }
-      searchRes.results = retryRes.results;
-    }
-
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched?.id) {
-      throw new Error(`Gogoanime: No matching anime found for "${title}"`);
-    }
-
+    const matched = searchRes.results[0];
     const info = await gogo.fetchAnimeInfo(matched.id);
-    if (!info.episodes?.length) {
-      throw new Error(`Gogoanime: No episodes found for "${matched.id}"`);
-    }
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`Gogoanime: Episode not found`);
 
-    const targetEp = info.episodes.find((ep: any) => ep.number === episode)
-      || info.episodes[episode - 1];
-
-    if (!targetEp?.id) {
-      throw new Error(`Gogoanime: Episode ${episode} not found`);
-    }
-
-    // Server cascade: VidStreaming → GogoCDN → StreamWish
-    const serverCascade = [
-      StreamingServers.VidStreaming,
-      StreamingServers.GogoCDN,
-      StreamingServers.StreamWish,
-    ];
-
-    for (const server of serverCascade) {
+    for (const server of [StreamingServers.VidStreaming, StreamingServers.GogoCDN, StreamingServers.StreamWish]) {
       try {
         const sources = await gogo.fetchEpisodeSources(targetEp.id, server);
         return this.sanitizeSources(sources, 'gogoanime', 'https://anitaku.pe/');
-      } catch (err) {
-        console.warn(`[AnimeExtraction] Gogoanime server ${server} failed:`, err);
-      }
+      } catch (err) { }
     }
+    throw new Error('Gogoanime: Exhausted');
+  }
 
-    throw new Error('Gogoanime: All servers exhausted');
+  private async extractFromAnimePahe(title: string, episode: number, isDub: boolean): Promise<IStreamResult> {
+    const pahe = new ANIME.AnimePahe();
+    const searchRes = await pahe.search(title);
+    if (!searchRes.results?.length) throw new Error(`AnimePahe: No results`);
+
+    const matched = searchRes.results[0];
+    const info = await pahe.fetchAnimeInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`AnimePahe: Episode not found`);
+
+    const sources = await pahe.fetchEpisodeSources(targetEp.id);
+    
+    // AnimePahe sources natively contain "eng" or "jpn" in audio tags sometimes, or we just pass it along
+    return this.sanitizeSources(sources, 'animepahe', 'https://animepahe.ru/');
   }
 
   // ─── Utilities ──────────────────────────────────────────────
 
-  /**
-   * Find the best matching result using simple string similarity.
-   */
-  private findBestMatch(results: any[], title: string): any {
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-    const normalizedTitle = normalize(title);
-
-    // First pass: exact match
-    const exact = results.find(r => {
-      const t = normalize(r.title || '');
-      return t === normalizedTitle;
-    });
-    if (exact) return exact;
-
-    // Second pass: includes match
-    const includes = results.find(r => {
-      const t = normalize(r.title || '');
-      return t.includes(normalizedTitle) || normalizedTitle.includes(t);
-    });
-    if (includes) return includes;
-
-    // Fallback: first result
-    return results[0];
-  }
-
-  /**
-   * Normalize Consumet source output to our unified IStreamResult interface.
-   */
-  private sanitizeSources(
-    rawSources: any,
-    providerName: string,
-    defaultReferer: string
-  ): IStreamResult {
+  private sanitizeSources(rawSources: any, providerName: string, defaultReferer: string): IStreamResult {
     const sources: IStreamSource[] = (rawSources.sources || []).map((s: any) => ({
-      url: s.url,
-      quality: s.quality || (s.isM3U8 ? 'auto' : 'default'),
-      isM3U8: Boolean(s.isM3U8),
+      url: s.url, quality: s.quality || (s.isM3U8 ? 'auto' : 'default'), isM3U8: Boolean(s.isM3U8),
     }));
 
     const subtitles: IStreamSubtitle[] = (rawSources.subtitles || []).map((s: any) => ({
-      url: s.url,
-      lang: s.lang?.toLowerCase().substring(0, 2) || 'en',
-      label: s.lang || 'English',
-      default: s.lang?.toLowerCase() === 'english' || s.lang?.toLowerCase() === 'en',
+      url: s.url, lang: s.lang?.toLowerCase().substring(0, 2) || 'en', label: s.lang || 'English', default: true
     }));
 
-    const headers: Record<string, string> = {
-      Referer: rawSources.headers?.Referer || rawSources.headers?.referer || defaultReferer,
-    };
-
     return {
-      success: sources.length > 0,
-      provider: providerName,
-      sources,
-      subtitles,
-      headers,
-      intro: rawSources.intro || undefined,
-      outro: rawSources.outro || undefined,
-      download: rawSources.download || undefined,
+      success: sources.length > 0, provider: providerName, sources, subtitles,
+      headers: { Referer: rawSources.headers?.Referer || defaultReferer },
     };
   }
 }

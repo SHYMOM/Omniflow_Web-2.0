@@ -120,6 +120,28 @@ export async function GET(request: NextRequest) {
         },
       });
     } else {
+
+      // ─── DIRECT MP4 PROXY (STREAMING) ───────────────────────
+      const isMp4 = targetUrl.includes('.mp4');
+      if (isMp4) {
+        // We use native fetch to get a ReadableStream we can pipe directly to NextResponse
+        // This avoids buffering a 2GB file into memory!
+        const fetchRes = await fetch(targetUrl, {
+          headers: headers as any,
+        });
+
+        const resHeaders = new Headers(corsHeaders);
+        resHeaders.set('Content-Type', fetchRes.headers.get('content-type') || 'video/mp4');
+        if (fetchRes.headers.has('content-length')) resHeaders.set('Content-Length', fetchRes.headers.get('content-length') as string);
+        if (fetchRes.headers.has('content-range')) resHeaders.set('Content-Range', fetchRes.headers.get('content-range') as string);
+        resHeaders.set('Accept-Ranges', 'bytes');
+
+        return new NextResponse(fetchRes.body, {
+          status: fetchRes.status,
+          headers: resHeaders,
+        });
+      }
+
       // ─── VIDEO SEGMENT / TS CHUNK PROXY ─────────────────────────
       // Many pirate CDNs wrap real MPEG-TS video data inside fake PNG images
       // to hide them on image CDNs (e.g. TikTok ByteDance ibyteimg.com).

@@ -22,6 +22,8 @@ interface StreamApiResponse {
   provider?: string;
   intro?: { start: number; end: number };
   outro?: { start: number; end: number };
+  availableLanguages?: string[];
+  isM3U8?: boolean;
 }
 
 /**
@@ -45,6 +47,7 @@ export async function GET(request: NextRequest) {
     const episode = Number(searchParams.get('episode') || '1');
     const season = Number(searchParams.get('season') || '1');
     const isDubbed = searchParams.get('dubbed') === 'true';
+    const lang = searchParams.get('lang') || 'sub';
 
     if (!id) {
       return NextResponse.json<StreamApiResponse>(
@@ -66,20 +69,22 @@ export async function GET(request: NextRequest) {
         episode,
         mediaType: 'anime',
         isDubbed,
+        language: lang,
       };
 
       streamResult = await animeService.extractSources(ctx);
     }
     // ─── MOVIES & TV ───────────────────────────────────────
     else if (mediaType === 'movie' || mediaType === 'tv') {
-      const title = await movieService.resolveTitle(id, mediaType as 'movie' | 'tv');
+      const resolved = await movieService.resolveTitle(id, mediaType as 'movie' | 'tv');
 
       const ctx: ExtractionContext = {
         mediaId: id,
-        title,
+        title: resolved.title,
         episode,
         season,
         mediaType: mediaType as 'movie' | 'tv',
+        language: lang,
       };
 
       streamResult = await movieService.extractSources(ctx);
@@ -101,7 +106,8 @@ export async function GET(request: NextRequest) {
 
       // Proxy the source URL through our stream proxy
       const referer = streamResult.headers?.Referer || '';
-      const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(defaultSource.url)}&referer=${encodeURIComponent(referer)}`;
+      const extension = defaultSource.isM3U8 ? '&ext=.m3u8' : '&ext=.mp4';
+      const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(defaultSource.url)}&referer=${encodeURIComponent(referer)}${extension}`;
 
       // Map subtitles to response format
       const subtitles = streamResult.subtitles.map(sub => ({
@@ -120,6 +126,8 @@ export async function GET(request: NextRequest) {
         provider: streamResult.provider,
         intro: streamResult.intro,
         outro: streamResult.outro,
+        availableLanguages: streamResult.availableLanguages,
+        isM3U8: defaultSource.isM3U8,
       });
     }
 

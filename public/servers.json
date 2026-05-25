@@ -1,5 +1,26 @@
 [
   {
+    "id": "vidnest",
+    "name": "Vidnest",
+    "baseUrl": "https://vidnest.fun",
+    "patterns": {
+      "movie": "/movie/{tmdbId}",
+      "tv": "/tv/{tmdbId}/{season}/{episode}",
+      "anime_sub": "/anime/{malId}/{episode}/sub",
+      "anime_dub": "/anime/{malId}/{episode}/dub"
+    },
+    "quality": [
+      "1080p",
+      "720p"
+    ],
+    "features": [
+      "sub",
+      "dub"
+    ],
+    "recommended": true,
+    "status": "active"
+  },
+  {
     "id": "vidsrc_to",
     "name": "VidSrc (to)",
     "baseUrl": "https://vidsrc.to",
@@ -9,8 +30,14 @@
       "anime_sub": "/embed/anime/{malId}/{episode}",
       "anime_dub": "/embed/anime/{malId}/{episode}"
     },
-    "quality": ["1080p", "720p"],
-    "features": ["sub", "dub"],
+    "quality": [
+      "1080p",
+      "720p"
+    ],
+    "features": [
+      "sub",
+      "dub"
+    ],
     "recommended": true,
     "status": "active"
   },
@@ -24,8 +51,14 @@
       "anime_sub": "/embed/anime/{malId}/{episode}",
       "anime_dub": "/embed/anime/{malId}/{episode}"
     },
-    "quality": ["1080p", "720p"],
-    "features": ["sub", "dub"],
+    "quality": [
+      "1080p",
+      "720p"
+    ],
+    "features": [
+      "sub",
+      "dub"
+    ],
     "recommended": false,
     "status": "active"
   },
@@ -39,8 +72,14 @@
       "anime_sub": "/v2/embed/anime/{malId}/{episode}",
       "anime_dub": "/v2/embed/anime/{malId}/{episode}"
     },
-    "quality": ["1080p", "720p"],
-    "features": ["sub", "dub"],
+    "quality": [
+      "1080p",
+      "720p"
+    ],
+    "features": [
+      "sub",
+      "dub"
+    ],
     "recommended": false,
     "status": "active"
   },
@@ -52,8 +91,13 @@
       "movie": "/embed/movie/{tmdbId}",
       "tv": "/embed/tv/{tmdbId}/{season}/{episode}"
     },
-    "quality": ["1080p", "720p"],
-    "features": ["sub"],
+    "quality": [
+      "1080p",
+      "720p"
+    ],
+    "features": [
+      "sub"
+    ],
     "recommended": false,
     "status": "active"
   },
@@ -67,8 +111,12 @@
       "anime_sub": "/embed/anime/{malId}/{episode}",
       "anime_dub": "/embed/anime/{malId}/{episode}"
     },
-    "quality": ["1080p"],
-    "features": ["sub"],
+    "quality": [
+      "1080p"
+    ],
+    "features": [
+      "sub"
+    ],
     "recommended": false,
     "status": "active"
   }

@@ -7,11 +7,11 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'movie';
-    const timeWindow = searchParams.get('timeWindow') || 'week';
+    const timeWindow = searchParams.get('timeWindow') || 'day';
     const page = searchParams.get('page') || '1';
 
     const response = await fetch(
-      `${TMDB_BASE}/trending/${type}/${timeWindow}?api_key=${TMDB_KEY}&language=en-US&page=${page}`,
+      `${TMDB_BASE}/trending/${type}/${timeWindow}?api_key=${TMDB_KEY}&language=en-US&include_adult=false&page=${page}`,
       { next: { revalidate: 3600 } }
     );
 

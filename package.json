@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@omss/framework": "^1.1.26",
     "@tanstack/react-query": "^5.100.10",
     "@types/crypto-js": "^4.2.2",
     "ascii-url-encoder": "^1.2.0",
@@ -16,9 +17,13 @@
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
+    "dotenv": "^17.4.2",
     "framer-motion": "^12.38.0",
+    "ioredis": "^5.10.1",
     "lucide-react": "^1.14.0",
     "next": "16.2.6",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hot-toast": "^2.6.0",

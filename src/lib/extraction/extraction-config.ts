@@ -61,7 +61,7 @@ export const FLARESOLVERR_TIMEOUT_MS = 30_000;
 export const PLAYWRIGHT_ENABLED = process.env.PLAYWRIGHT_ENABLED === 'true';
 
 /** Timeout for Playwright page load + network interception */
-export const PLAYWRIGHT_TIMEOUT_MS = 15_000;
+export const PLAYWRIGHT_TIMEOUT_MS = 18_000;
 
 // ─── User Agent Pool ─────────────────────────────────────────
 
@@ -96,5 +96,5 @@ export const ACCEPT_LANGUAGE_POOL: string[] = [
 // ─── Provider Priority Mapping ───────────────────────────────
 
 export const ANIME_PROVIDER_ORDER = ['zoro', 'gogoanime', '9anime'] as const;
-export const MOVIE_PROVIDER_ORDER = ['flixhq', 'vidsrc', 'fmovies', 'goku'] as const;
+export const MOVIE_PROVIDER_ORDER = ['smashystream', 'moviehdwatch', 'vidsrc'] as const;
 export const MANGA_PROVIDER_ORDER = ['mangadex', 'asurascans', 'mangapill'] as const;

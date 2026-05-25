@@ -33,26 +33,19 @@ export class ProviderRegistry {
   }
 
   /**
-   * Execute providers in priority order with circuit-breaker gating.
-   * Returns the first successful result, or the last error.
+   * Execute all providers concurrently using a Promise.any approach.
+   * First successful stream wins the race, providing extreme speed like MovieBox.
    */
-  async executeWithCascade<T>(
+  async executeConcurrently<T>(
     providers: ProviderEntry<T>[]
   ): Promise<IProviderResult<T>> {
-    // Sort by priority (ascending — lower number = higher priority)
-    const sorted = [...providers].sort((a, b) => a.priority - b.priority);
-
-    let lastError: string = 'No providers available';
-    let totalLatency = 0;
-
-    for (const provider of sorted) {
+    const promises = providers.map(async (provider) => {
       // Check circuit breaker
       if (!this.circuitBreaker.isAvailable(provider.name)) {
         console.warn(`[ProviderRegistry] Skipping ${provider.name} — circuit OPEN`);
-        continue;
+        throw new Error(`Circuit OPEN for ${provider.name}`);
       }
 
-      // Record probe attempt if HALF_OPEN
       if (this.circuitBreaker.getState(provider.name) === 'HALF_OPEN') {
         this.circuitBreaker.recordProbeAttempt(provider.name);
       }
@@ -60,7 +53,6 @@ export class ProviderRegistry {
       const startTime = Date.now();
 
       try {
-        // Race the provider against a timeout
         const result = await Promise.race([
           provider.execute(),
           new Promise<never>((_, reject) =>
@@ -69,11 +61,13 @@ export class ProviderRegistry {
         ]);
 
         const latencyMs = Date.now() - startTime;
-        totalLatency += latencyMs;
+        
+        // Basic check for extraction result validity
+        if ((result as any)?.success === false) {
+           throw new Error(`${provider.name} returned success: false`);
+        }
 
-        // Record success
         this.circuitBreaker.recordSuccess(provider.name);
-
         console.log(`[ProviderRegistry] ✓ ${provider.name} succeeded in ${latencyMs}ms`);
 
         return {
@@ -81,30 +75,29 @@ export class ProviderRegistry {
           provider: provider.name,
           data: result,
           latencyMs,
-        };
+        } as IProviderResult<T>;
       } catch (err) {
         const latencyMs = Date.now() - startTime;
-        totalLatency += latencyMs;
         const errorMsg = err instanceof Error ? err.message : String(err);
-
-        // Record failure
         this.circuitBreaker.recordFailure(provider.name);
-
-        console.warn(
-          `[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`
-        );
-
-        lastError = `${provider.name}: ${errorMsg}`;
+        console.warn(`[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`);
+        throw new Error(`${provider.name}: ${errorMsg}`);
       }
-    }
+    });
 
-    // All providers failed
-    return {
-      success: false,
-      provider: 'none',
-      error: lastError,
-      latencyMs: totalLatency,
-    };
+    try {
+      // Return the FIRST successful resolved promise
+      const winner = await Promise.any(promises);
+      return winner;
+    } catch (aggregateError) {
+      // If ALL providers fail
+      return {
+        success: false,
+        provider: 'none',
+        error: 'All providers failed concurrently',
+        latencyMs: 0,
+      };
+    }
   }
 
   /**

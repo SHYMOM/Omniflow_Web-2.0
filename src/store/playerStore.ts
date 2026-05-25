@@ -15,6 +15,10 @@ interface PlayerState {
   setIsMuted: (m: boolean) => void;
   isDubbed: boolean;
   setIsDubbed: (d: boolean) => void;
+  downloadUrl: string | null;
+  setDownloadUrl: (url: string | null) => void;
+  availableLanguages: string[];
+  setAvailableLanguages: (langs: string[]) => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
@@ -32,4 +36,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   setIsMuted: (m) => set({ isMuted: m }),
   isDubbed: false,
   setIsDubbed: (d) => set({ isDubbed: d }),
+  downloadUrl: null,
+  setDownloadUrl: (url) => set({ downloadUrl: url }),
+  availableLanguages: ['sub'],
+  setAvailableLanguages: (langs) => set({ availableLanguages: langs }),
 }));

@@ -30,7 +30,7 @@ function WatchContent() {
   const seasonNum = Number(searchParams.get('season') || '1');
 
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
-  const { activeServerId, setActiveServer } = usePlayerStore();
+  const { activeServerId, setActiveServer, downloadUrl } = usePlayerStore();
   const { addToHistory } = useUserStore();
 
   const [showAlertStrip, setShowAlertStrip] = useState(true);
@@ -215,11 +215,6 @@ function WatchContent() {
               </button>
             </div>
 
-            <button className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-white transition-colors cursor-pointer">
-              <Mic size={13} />
-              <span>Dub</span>
-            </button>
-
             {/* Server Trigger opens floating overlay switcher modal */}
             <button
               onClick={() => setShowServerModal(true)}
@@ -234,9 +229,20 @@ function WatchContent() {
               <span>Share</span>
             </button>
 
-            <button className="flex items-center justify-center bg-surface/60 hover:bg-surface w-8 h-8 rounded-full border border-border/40 text-white transition-colors cursor-pointer">
-              <Download size={13} />
-            </button>
+            {downloadUrl ? (
+              <a 
+                href={downloadUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center justify-center bg-accent-green/20 hover:bg-accent-green/40 w-8 h-8 rounded-full border border-accent-green/30 text-accent-green transition-colors cursor-pointer shadow-[0_0_10px_rgba(0,230,118,0.2)]"
+              >
+                <Download size={13} />
+              </a>
+            ) : (
+              <button className="flex items-center justify-center bg-surface/60 w-8 h-8 rounded-full border border-border/40 text-text-muted cursor-not-allowed opacity-50">
+                <Download size={13} />
+              </button>
+            )}
 
             <button className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-text-secondary hover:text-white transition-colors cursor-pointer ml-auto">
               <Flag size={13} />
