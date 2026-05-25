@@ -141,7 +141,8 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
           } else {
             // If the stream failed to resolve AND we explicitly requested a dub, switch back to sub
             if (language !== 'sub') {
-              alert(`${language === 'hin' ? 'Hindi' : 'English'} dub not found! Switching back to original...`);
+              console.warn(`${language === 'hin' ? 'Hindi' : 'English'} dub not found! Switching back to original...`);
+              // We could use a toast here, but for now we fallback silently to not block the thread
               setLanguage('sub');
               return; // The language state change will trigger a re-fetch
             } else {
@@ -175,10 +176,16 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
     const isHls = streamUrl.includes('ext=.m3u8') || (streamUrl.includes('.m3u8') && !streamUrl.includes('ext=.mp4'));
     
+    const tryPlay = () => {
+      video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    };
+
     if (!isHls) {
       video.src = streamUrl;
+      tryPlay();
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = streamUrl;
+      tryPlay();
     } else {
       const initHls = () => {
         const Hls = (window as any).Hls;
@@ -202,8 +209,9 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         hls.attachMedia(video);
         hlsRef.current = hls;
 
-        hls.on(Hls.Events.MANIFEST_PARSED, (event: any, data: any) => {
+         hls.on(Hls.Events.MANIFEST_PARSED, (event: any, data: any) => {
           setHlsLevels(data.levels);
+          tryPlay();
           
           // Native multi-audio tracks extraction
           if (hls.audioTracks && hls.audioTracks.length > 1) {
