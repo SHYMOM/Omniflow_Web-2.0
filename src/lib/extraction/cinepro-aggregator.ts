@@ -1,11 +1,13 @@
 import { VidNestProvider } from './cinepro-providers/vidnest/vidnest';
 import { VidSrcProvider } from './cinepro-providers/vidsrc/vidsrc';
 import { VidApiProvider } from './cinepro-providers/vidapi/vidapi';
+import { VidLinkProvider } from './cinepro-providers/vidlink/vidlink';
 import { IStreamSource, IStreamSubtitle } from '@/types/extraction-types';
 import type { ProviderMediaObject } from '@omss/framework';
 
 export class CineproAggregator {
   private providers = [
+    new VidLinkProvider(),
     new VidNestProvider(),
     new VidApiProvider(),
     new VidSrcProvider(),
@@ -22,41 +24,62 @@ export class CineproAggregator {
   }
 
   private async scrape(media: ProviderMediaObject): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const allSources: IStreamSource[] = [];
-    const allSubtitles: IStreamSubtitle[] = [];
-
     const promises = this.providers.map(async (provider) => {
-      try {
-        const result = media.type === 'movie' 
-          ? await provider.getMovieSources(media) 
-          : await provider.getTVSources(media);
-          
-        if (result && result.sources) {
-          result.sources.forEach((s) => {
-            allSources.push({
-              url: s.url,
-              quality: this.mapQuality(s.quality),
-              isM3U8: s.type === 'hls',
-            });
-          });
-        }
-        if (result && result.subtitles) {
-          result.subtitles.forEach((s) => {
-            allSubtitles.push({
-              url: s.url,
-              lang: s.label?.toLowerCase().substring(0, 2) || 'en',
-              label: s.label || 'English',
-              default: s.label?.toLowerCase() === 'english' || s.label?.toLowerCase() === 'en',
-            });
-          });
-        }
-      } catch (e) {
-        console.warn(`CineproAggregator: Error in ${provider.name}`, (e as Error).message);
+      const result = media.type === 'movie' 
+        ? await provider.getMovieSources(media) 
+        : await provider.getTVSources(media);
+        
+      if (!result || !result.sources || result.sources.length === 0) {
+        throw new Error(`No sources found by ${provider.name}`);
       }
+      
+      const mappedSources: IStreamSource[] = result.sources.map((s: any) => ({
+        url: s.url,
+        quality: this.mapQuality(s.quality),
+        isM3U8: s.type === 'hls',
+      }));
+
+      const mappedSubtitles: IStreamSubtitle[] = (result.subtitles || []).map((s: any) => ({
+        url: s.url,
+        lang: s.label?.toLowerCase().substring(0, 2) || 'en',
+        label: s.label || 'English',
+        default: s.label?.toLowerCase() === 'english' || s.label?.toLowerCase() === 'en',
+      }));
+
+      return { sources: mappedSources, subtitles: mappedSubtitles };
     });
 
-    await Promise.allSettled(promises);
-    return { sources: allSources, subtitles: allSubtitles };
+    return new Promise((resolve, reject) => {
+      let failures = 0;
+      let resolved = false;
+      
+      if (promises.length === 0) {
+        return resolve({ sources: [], subtitles: [] });
+      }
+
+      promises.forEach(p => {
+        p.then(res => {
+          if (resolved) return;
+          if (res.subtitles && res.subtitles.length > 0) {
+            resolved = true;
+            resolve(res);
+          } else {
+            // It has no subtitles. Wait 800ms for a better provider before settling.
+            setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                resolve(res);
+              }
+            }, 800);
+          }
+        }).catch(() => {
+          failures++;
+          if (failures === promises.length && !resolved) {
+            resolve({ sources: [], subtitles: [] });
+          }
+        });
+      });
+    });
   }
 
   private mapQuality(quality: string): string {

@@ -305,49 +305,199 @@ export async function getHybridTrending(page: number | boolean = 1, hideAdult = 
 }
 
 /**
+ * Fetch high-quality episode thumbnails from TMDB using ARM mapping
+ */
+async function fetchTMDBEpisodeThumbnails(animeId: number, isMAL: boolean): Promise<Map<number, string>> {
+  const thumbnailMap = new Map<number, string>();
+  try {
+    const source = isMAL ? 'myanimelist' : 'anilist';
+    // 1. Get TMDB mapping from ARM with a fast timeout (2000ms)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const armRes = await fetch(`https://arm.haglund.dev/api/v2/ids?source=${source}&id=${animeId}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!armRes.ok) return thumbnailMap;
+    const armData = await armRes.json();
+    const tmdbId = armData.themoviedb;
+    if (!tmdbId) return thumbnailMap;
+
+    const apiKey = process.env.TMDB_API_KEY || 'fb7bb23f03b6994dafc674c074d01761';
+
+    // 2. Fetch TV details to understand seasons
+    const tvRes = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`);
+    if (!tvRes.ok) return thumbnailMap;
+    const tvData = await tvRes.json();
+
+    const seasons = tvData.seasons || [];
+    const validSeasons = seasons
+      .filter((s: any) => s.season_number > 0)
+      .sort((a: any, b: any) => a.season_number - b.season_number);
+
+    const mappedSeason = armData['themoviedb-season'];
+
+    // Determine which seasons to fetch (max 3 to keep it lightweight)
+    const seasonsToFetch = new Set<number>();
+    if (mappedSeason !== null && mappedSeason !== undefined) {
+      seasonsToFetch.add(Number(mappedSeason));
+    } else if (validSeasons.length > 0) {
+      seasonsToFetch.add(1); // Always try first season
+      seasonsToFetch.add(validSeasons[validSeasons.length - 1].season_number); // Always try latest season
+      if (validSeasons.length > 1) {
+        seasonsToFetch.add(validSeasons[validSeasons.length - 2].season_number); // Try second-to-last season
+      }
+    }
+
+    // Fetch details for each targeted season in parallel
+    const seasonResults = await Promise.all(
+      Array.from(seasonsToFetch).map(async (sNum) => {
+        try {
+          const res = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${sNum}?api_key=${apiKey}`);
+          if (res.ok) return { seasonNumber: sNum, data: await res.json() };
+        } catch (e) {}
+        return null;
+      })
+    );
+
+    // Calculate episode offsets to handle relative seasons (e.g. Naruto Season 2 Episode 1)
+    const seasonEpisodeCounts = new Map<number, number>();
+    validSeasons.forEach((s: any) => {
+      seasonEpisodeCounts.set(s.season_number, s.episode_count);
+    });
+
+    seasonResults.forEach((sResult) => {
+      if (!sResult) return;
+      const sNum = sResult.seasonNumber;
+      const episodes = sResult.data.episodes || [];
+
+      // Accumulate previous seasons' episode count to calculate offset
+      let offset = 0;
+      for (let i = 1; i < sNum; i++) {
+        offset += seasonEpisodeCounts.get(i) || 0;
+      }
+
+      episodes.forEach((ep: any) => {
+        if (!ep.still_path) return;
+        const imgUrl = `https://image.tmdb.org/t/p/w300${ep.still_path}`;
+
+        // Support absolute numbering (e.g. One Piece episode 1161 has ep.episode_number = 1161)
+        thumbnailMap.set(ep.episode_number, imgUrl);
+
+        // Support relative numbering (e.g. Naruto Season 2 Episode 1 maps to absolute offset + 1)
+        const absNum = offset + ep.episode_number;
+        thumbnailMap.set(absNum, imgUrl);
+      });
+    });
+
+  } catch (err) {
+    console.warn('Failed to fetch TMDB episode thumbnails:', err);
+  }
+  return thumbnailMap;
+}
+
+/**
  * Fetch real episode lists for Anime (Jikan with AniList fallback) or TMDB
  */
 export async function getMediaEpisodes(id: string, type: string, season = 1) {
   const numericId = extractId(id);
 
   if (type === 'anime') {
-    // Try Jikan first
+    const isMAL = String(id).includes('mal') || String(id).includes('jikan');
+    const tmdbThumbnailsPromise = fetchTMDBEpisodeThumbnails(numericId, isMAL);
+
+    // 1. Try Consumet Zoro first (has full episode list and thumbnails)
     try {
-      // 1. Fetch base episode data
-      const baseRes = await (await fetch(`/api/jikan/anime/${numericId}/episodes`)).json();
-      const baseEps = baseRes.data || [];
+      const { ANIME } = await import('@/lib/consumet');
+      const zoro = new ANIME.Zoro();
+      
+      // Resolve title first
+      let title = '';
+      try {
+        const { getAnimeDetail } = await import('./anilist');
+        const media = await getAnimeDetail(String(numericId));
+        title = media.title?.english || media.title?.romaji || '';
+      } catch (e) {}
 
-      // 2. Fetch episode videos (which contain thumbnails)
-      const videoRes = await (await fetch(`/api/jikan/anime/${numericId}/episodes/videos`)).json();
-      const videoEps = videoRes.data || [];
+      if (title) {
+        const searchRes = await zoro.search(title);
+        if (searchRes.results?.length > 0) {
+          const info = await zoro.fetchAnimeInfo(searchRes.results[0].id);
+          if (info.episodes && info.episodes.length > 0) {
+            const tmdbThumbnails = await tmdbThumbnailsPromise;
+            return info.episodes.map((ep: any) => ({
+              number: ep.number,
+              title: ep.title || `Episode ${ep.number}`,
+              thumbnail: tmdbThumbnails.get(ep.number) || ep.image || null,
+              aired: ep.airDate || null,
+              filler: ep.isFiller || false,
+            }));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Zoro episode fetch failed, falling back to Jikan', err);
+    }
 
-      // 3. Merge thumbnails into base data
+    // 2. Try Jikan as fallback
+    try {
+      let baseEps: any[] = [];
+      let page = 1;
+      let hasNextPage = true;
+      const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+      // Fetch all pages of episodes to support 1000+ ep anime
+      while (hasNextPage) {
+        const res = await fetch(`/api/jikan/anime/${numericId}/episodes?page=${page}`);
+        if (!res.ok) {
+          console.warn(`Jikan page ${page} returned status ${res.status}`);
+          break;
+        }
+        const baseRes = await res.json();
+        if (baseRes.data) {
+          baseEps = baseEps.concat(baseRes.data);
+        }
+        hasNextPage = baseRes.pagination?.has_next_page || false;
+        page++;
+        if (page > 25) break; // support up to 2500 episodes safely
+        
+        if (hasNextPage) {
+          await sleep(350); // Avoid hitting Jikan's 3 requests/sec rate limit
+        }
+      }
+
       if (baseEps.length > 0) {
+        // Try to fetch episode videos for thumbnails (usually only first 100)
+        let videoEps: any[] = [];
+        try {
+           const videoRes = await (await fetch(`/api/jikan/anime/${numericId}/episodes/videos`)).json();
+           videoEps = videoRes.data || [];
+        } catch(e) {}
+
+        const tmdbThumbnails = await tmdbThumbnailsPromise;
         return baseEps.map((ep: any) => {
-          // Find matching video for thumbnail
           const videoMatch = videoEps.find((v: any) => v.mal_id === ep.mal_id);
           return {
             number: ep.mal_id,
             title: ep.title || `Episode ${ep.mal_id}`,
-            thumbnail: videoMatch?.images?.jpg?.image_url || videoMatch?.images?.webp?.image_url || null,
+            thumbnail: tmdbThumbnails.get(ep.mal_id) || videoMatch?.images?.jpg?.image_url || videoMatch?.images?.webp?.image_url || null,
             aired: ep.aired || null,
             filler: ep.filler,
             recap: ep.recap
           };
-        });
+        }).sort((a, b) => a.number - b.number);
       }
     } catch (err) {
       console.warn('Jikan episodes failed, falling back to AniList', err);
     }
 
-    // Fallback to AniList (limited info)
+    // 3. Fallback to AniList
     try {
       const media = await getAnimeDetail(String(numericId));
       if (media && media.episodes) {
+        const tmdbThumbnails = await tmdbThumbnailsPromise;
         return Array.from({ length: media.episodes }, (_, i) => ({
           number: i + 1,
           title: `Episode ${i + 1}`,
-          thumbnail: media.bannerImage || media.coverImage.extraLarge,
+          thumbnail: tmdbThumbnails.get(i + 1) || media.bannerImage || media.coverImage?.extraLarge || null,
           aired: null
         }));
       }

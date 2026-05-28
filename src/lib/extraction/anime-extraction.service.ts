@@ -15,6 +15,8 @@ import { getCachedStream, setCachedStream } from '@/lib/cache/redis';
 import { PLAYWRIGHT_ENABLED } from './extraction-config';
 import { MovieboxExtractor } from './moviebox-extractor';
 import { StremioExtractor } from './stremio-extractor';
+import { HindiDubbedExtractor } from './hindidubbed-extractor';
+import { DesiDubAnimeExtractor } from './desidubanime-extractor';
 
 export class AnimeExtractionService {
   private registry: ProviderRegistry;
@@ -114,6 +116,24 @@ export class AnimeExtractionService {
         }
       },
       {
+        name: 'hindidubbed',
+        priority: 1.5,
+        mediaTypes: ['anime'],
+        execute: () => {
+           if (!isHindi) throw new Error('HindiDubbed: Only runs for Hindi queries');
+           return new HindiDubbedExtractor().extractDirectStream(title, episode);
+        }
+      },
+      {
+        name: 'desidubanime',
+        priority: 1.6,
+        mediaTypes: ['anime'],
+        execute: () => {
+           if (!isHindi) throw new Error('DesiDubAnime: Only runs for Hindi queries');
+           return new DesiDubAnimeExtractor().extractDirectStream(title, episode);
+        }
+      },
+      {
         name: 'zoro',
         priority: 2,
         mediaTypes: ['anime'],
@@ -136,8 +156,17 @@ export class AnimeExtractionService {
     const result = await this.registry.executeConcurrently(providers);
 
     if (result.success && result.data) {
-      // Run parallel check to determine availableLanguages
-      result.data.availableLanguages = await this.determineAvailableLanguages(title, episode, isDub, result.data.provider);
+      // Set default available languages immediately to avoid blocking the client
+      result.data.availableLanguages = ['sub', 'eng', 'hin'];
+
+      // Perform language discovery in the background to update the cache asynchronously
+      this.determineAvailableLanguages(title).then(async (discoveredLangs) => {
+        if (result.data) {
+          result.data.availableLanguages = discoveredLangs;
+          await setCachedStream(cacheKey, result.data, 10800);
+        }
+      }).catch(() => {});
+
       await setCachedStream(cacheKey, result.data, 10800);
       return result.data;
     }
@@ -147,11 +176,27 @@ export class AnimeExtractionService {
 
   // ─── Parallel Language Discovery ─────────────────────────────
 
-  private async determineAvailableLanguages(title: string, episode: number, currentIsDub: boolean, provider: string): Promise<string[]> {
-    // We instantly resolve all options to enable the Audio button in the UI.
-    // If the user selects a language that doesn't exist, our extraction pipeline
-    // handles the fast fallback (Hin -> Eng -> Sub) seamlessly in <600ms!
-    return ['sub', 'eng', 'hin'];
+  private async determineAvailableLanguages(title: string): Promise<string[]> {
+    const langs = ['sub'];
+    try {
+      const gogo = new ANIME.Gogoanime();
+      
+      // Quick parallel probes for dubs using Gogoanime's fast search
+      const probes = await Promise.allSettled([
+        gogo.search(`${title} (Dub)`).then(res => res.results && res.results.length > 0),
+        gogo.search(`${title} Hindi Dubbed`).then(res => res.results && res.results.length > 0),
+        gogo.search(`${title} Hindi`).then(res => res.results && res.results.length > 0)
+      ]);
+      
+      if (probes[0].status === 'fulfilled' && probes[0].value) langs.push('eng', 'dub');
+      if ((probes[1].status === 'fulfilled' && probes[1].value) || (probes[2].status === 'fulfilled' && probes[2].value)) langs.push('hin');
+    } catch (e) {
+      console.warn('[AnimeExtraction] Language discovery probe failed:', e);
+      // Fallback to basic assumption if probe fails
+      return ['sub', 'eng', 'hin'];
+    }
+    
+    return langs;
   }
 
   // ─── Provider Implementations ────────────────────────────────
@@ -168,8 +213,14 @@ export class AnimeExtractionService {
 
     const tryExtract = async (langExt: string) => {
       let episodeId = targetEp.id;
-      if (langExt === '$dub' && !episodeId.includes('$dub')) episodeId = episodeId.replace(/\$sub$/, '$dub');
-      if (langExt === '$sub' && !episodeId.includes('$sub')) episodeId = episodeId.replace(/\$dub$/, '$sub');
+      const cleanLang = langExt.replace('$', '');
+      const parts = episodeId.split('$');
+      if (parts.length > 1) {
+        parts[parts.length - 1] = cleanLang;
+        episodeId = parts.join('$');
+      } else {
+        episodeId = `${episodeId}$${cleanLang}`;
+      }
       
       for (const server of [StreamingServers.VidCloud, StreamingServers.VidStreaming]) {
         try {
@@ -180,8 +231,12 @@ export class AnimeExtractionService {
       throw new Error('Zoro: Exhausted');
     };
 
-    // Fast Fallback Loop: Dub -> Sub
-    const preferences = (language === 'hin' || language === 'eng' || language === 'dub') ? ['$dub', '$sub'] : ['$sub'];
+    // Fast Fallback Loop: Try exact preference first, then fallback to sub
+    const preferences = [];
+    if (language === 'hin') preferences.push('$dub', '$sub');
+    else if (language === 'eng' || language === 'dub') preferences.push('$dub', '$sub');
+    else preferences.push('$sub', '$dub'); // if sub preferred, try sub then dub
+
     for (const pref of preferences) {
       try {
         const result = await tryExtract(pref);
@@ -197,18 +252,22 @@ export class AnimeExtractionService {
     
     // Fast Fallback Loop: Hindi -> English -> Sub
     const queries = [];
-    if (language === 'hin') queries.push(`${title} Hindi Dubbed`, `${title} Hindi`);
-    if (language === 'hin' || language === 'eng' || language === 'dub') queries.push(`${title} (Dub)`);
-    queries.push(title); // Sub/Original fallback
+    if (language === 'hin') {
+      queries.push(`${title} Hindi Dubbed`, `${title} Hindi`, `${title} (Dub)`, `${title} Dub`, title);
+    } else if (language === 'eng' || language === 'dub') {
+      queries.push(`${title} (Dub)`, `${title} Dub`, `${title} dub`, title);
+    } else {
+      queries.push(title, `${title} (Dub)`, `${title} Dub`); // Sub preferred, but fallback to dub if sub not found
+    }
 
     let matched;
     for (const q of queries) {
        try {
-         const searchRes = await gogo.search(q);
-         if (searchRes.results?.length) {
-            matched = searchRes.results[0];
-            break;
-         }
+          const searchRes = await gogo.search(q);
+          if (searchRes.results?.length) {
+             matched = searchRes.results[0];
+             break;
+          }
        } catch (e) {}
     }
     if (!matched) throw new Error(`Gogoanime: No results`);

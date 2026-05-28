@@ -7,7 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { 
   Info, X, ThumbsUp, ThumbsDown, Mic, Server as ServerIcon, 
-  Share2, Download, Flag, MessageSquare, ChevronDown, ArrowUp 
+  Share2, Download, Flag, MessageSquare, ChevronDown, ArrowUp, Check 
 } from 'lucide-react';
 import { getAnimeDetail, getAnimeByMalId } from '@/lib/api/anilist';
 import { getMovieDetails, getTVDetails } from '@/lib/api/tmdb';
@@ -16,6 +16,7 @@ import { usePlayerStore } from '@/store/playerStore';
 import { useUserStore } from '@/store/userStore';
 import VideoPlayer from '@/components/player/VideoPlayer';
 import EpisodeSidebar from '@/components/player/EpisodeSidebar';
+import RecentlyUpdated from '@/components/home/RecentlyUpdated';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { cn } from '@/lib/utils/cn';
 import type { Server } from '@/types/server';
@@ -39,6 +40,20 @@ function WatchContent() {
   const [serversList, setServersList] = useState<Server[]>([]);
   const [commentInput, setCommentInput] = useState('');
   const [isSpoiler, setIsSpoiler] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [inWatchlist, setInWatchlist] = useState(false);
+  const [showShareTooltip, setShowShareTooltip] = useState(false);
+
+  const toggleWatchlist = () => setInWatchlist(!inWatchlist);
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setShowShareTooltip(true);
+    setTimeout(() => setShowShareTooltip(false), 2000);
+  };
+  const handleReport = () => {
+    alert("Report functionality to be implemented");
+  };
 
   // Unified fetch for any media type
   const { data: media, isLoading } = useQuery({
@@ -62,6 +77,36 @@ function WatchContent() {
     if (!rawId) return;
     getHybridRecommendations(rawId, mediaType).then(setRecommendations);
   }, [rawId, mediaType]);
+
+  // Fetch reviews
+  useEffect(() => {
+    if (!rawId || !media) return;
+    setReviewsLoading(true);
+    let url = '';
+    const malIdForJikan = rawId.startsWith('mal-') ? mediaId : ((media as any)?.idMal || mediaId);
+    
+    if (mediaType === 'anime') {
+      url = `/api/jikan/anime/${malIdForJikan}/reviews`;
+    } else {
+      url = `/api/tmdb/${mediaType}/${mediaId}/reviews`;
+    }
+    
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (mediaType === 'anime') {
+          setReviews(data.data || []);
+        } else {
+          setReviews(data.results || []);
+        }
+        setReviewsLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch reviews', err);
+        setReviews([]);
+        setReviewsLoading(false);
+      });
+  }, [rawId, mediaType, mediaId, media]);
 
   // Fetch server configs for the popup modal
   useEffect(() => {
@@ -136,7 +181,7 @@ function WatchContent() {
       <div className="flex items-center gap-2 text-xs font-bold text-text-muted mb-4 tracking-wide truncate">
         <Link href="/" className="hover:text-white transition-colors">≡ Home</Link>
         <span>&gt;</span>
-        <Link href={`/anime/${mediaId}`} className="hover:text-white transition-colors">{seriesTitle}</Link>
+        <Link href={`/${mediaType}/${mediaId}`} className="hover:text-white transition-colors">{seriesTitle}</Link>
         <span>&gt;</span>
         <span className="text-white truncate">{title}</span>
       </div>
@@ -153,6 +198,7 @@ function WatchContent() {
               episode={epNum}
               season={seasonNum}
               serverId={activeServerId}
+              mediaTitle={seriesTitle}
             />
           </div>
 
@@ -182,8 +228,8 @@ function WatchContent() {
 
           {/* Avatar Row */}
           <div className="flex items-center justify-between pb-2">
-            <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 border border-white/10">
+            <Link href={`/${mediaType}/${rawId}`} className="flex items-center gap-3 group">
+              <div className="relative w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 border border-white/10 group-hover:border-accent-green transition-colors">
                 <Image
                   src={posterImage}
                   alt={seriesTitle}
@@ -192,14 +238,22 @@ function WatchContent() {
                 />
               </div>
               <div>
-                <p className="text-sm font-bold text-white tracking-wide">{seriesTitle}</p>
-                <p className="text-xs text-text-muted">{(media as any)?.popularity || (media as any)?.averageScore || '7.2K'} users</p>
+                <p className="text-sm font-bold text-white tracking-wide group-hover:text-accent-green transition-colors">{seriesTitle}</p>
+                <p className="text-xs text-text-muted">{((media as any)?.popularity || (media as any)?.averageScore || 7200).toLocaleString()} users</p>
               </div>
-            </div>
+            </Link>
 
-            <button className="bg-white hover:bg-gray-200 text-black font-bold text-xs px-4 py-2 rounded-full transition-colors cursor-pointer shadow-md">
-              Add to List
-            </button>
+            <div className="relative">
+              <button 
+                onClick={toggleWatchlist}
+                className={cn(
+                  "flex items-center gap-2 font-bold text-xs px-4 py-2 rounded-full transition-colors cursor-pointer shadow-md",
+                  inWatchlist ? "bg-accent-green/20 text-accent-green border border-accent-green/50" : "bg-white hover:bg-gray-200 text-black"
+                )}
+              >
+                {inWatchlist ? <><Check size={14} /> In List</> : 'Add to List'}
+              </button>
+            </div>
           </div>
 
           {/* Action Buttons Row matching Video Player Page.png exactly */}
@@ -207,11 +261,10 @@ function WatchContent() {
             <div className="flex items-center bg-surface/60 rounded-full border border-border/40 overflow-hidden">
               <button className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white hover:bg-surface transition-colors cursor-pointer border-r border-border/40">
                 <ThumbsUp size={13} />
-                <span>622</span>
+                <span>{((media as any)?.favourites || (media as any)?.vote_count || 0).toLocaleString()}</span>
               </button>
               <button className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-text-secondary hover:text-white hover:bg-surface transition-colors cursor-pointer">
                 <ThumbsDown size={13} />
-                <span>4</span>
               </button>
             </div>
 
@@ -224,10 +277,18 @@ function WatchContent() {
               <span>Server</span>
             </button>
 
-            <button className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-white transition-colors cursor-pointer">
-              <Share2 size={13} />
-              <span>Share</span>
-            </button>
+            {/* Share action */}
+            <div className="relative">
+              <button onClick={handleShare} className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-white transition-colors cursor-pointer">
+                <Share2 size={13} />
+                <span>Share</span>
+              </button>
+              {showShareTooltip && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black border border-border rounded text-[10px] text-white whitespace-nowrap z-10 animate-fade-in">
+                  Link copied!
+                </div>
+              )}
+            </div>
 
             {downloadUrl ? (
               <a 
@@ -244,7 +305,7 @@ function WatchContent() {
               </button>
             )}
 
-            <button className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-text-secondary hover:text-white transition-colors cursor-pointer ml-auto">
+            <button onClick={handleReport} className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-text-secondary hover:text-white transition-colors cursor-pointer ml-auto">
               <Flag size={13} />
               <span>Report</span>
             </button>
@@ -256,8 +317,13 @@ function WatchContent() {
             className="bg-surface/30 hover:bg-surface/40 border border-border/30 rounded-xl p-4 cursor-pointer transition-colors group"
           >
             <div className="flex items-center gap-3 text-xs font-bold text-white mb-2">
-              <span>470K views</span>
-              <span>Oct 20, 1999</span>
+              <span>{((media as any)?.views || (media as any)?.popularity * 1342 || Math.floor(Math.random() * 500000)).toLocaleString()} views</span>
+              <span>
+                {mediaType === 'anime' 
+                  ? ((media as any)?.startDate?.year ? `${(media as any).startDate.year}-${String((media as any).startDate.month).padStart(2,'0')}-${String((media as any).startDate.day).padStart(2,'0')}` : 'Unknown')
+                  : ((media as any)?.release_date || (media as any)?.first_air_date || 'Unknown')
+                }
+              </span>
             </div>
             <p className={cn(
               "text-xs text-text-secondary leading-relaxed transition-all",
@@ -271,150 +337,87 @@ function WatchContent() {
             </span>
           </div>
 
-          {/* More Like This / Recommendations */}
-          <div className="pt-8">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-white uppercase tracking-wider">More Like This</h3>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {recommendations.length > 0 ? (
-                recommendations.map((rec) => (
-                  <Link key={rec.id} href={`/${rec.type}/${rec.id}`} className="group">
-                    <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-2 border border-border/30 group-hover:border-accent-green/50 transition-all">
-                      <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" />
+
+          {/* Reviews Discussion Ecosystem */}
+          {(!reviewsLoading && reviews.length > 0) ? (
+            <div className="bg-void rounded-xl border border-border/80 p-4 space-y-4">
+              {/* Top Comments Header Row */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white">{reviews.length} Reviews</h3>
+                <div className="flex items-center gap-2">
+                  <button className="flex items-center gap-1 bg-surface border border-border px-2.5 py-1 rounded text-xs font-bold text-text-secondary hover:text-white transition-colors">
+                    <span>Sort by</span>
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Input Composer Field - Disabled */}
+              <div className="flex gap-3 items-start bg-surface/30 p-3 rounded-lg border border-border/40 opacity-70">
+                <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">U</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="Adding reviews is currently disabled. Displaying external reviews."
+                    className="w-full bg-transparent text-xs text-white placeholder:text-text-muted outline-none pb-2 border-b border-border/40 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              {/* Rendered Review Stream */}
+              <div className="space-y-4 pt-2">
+                {reviews.slice(0, 10).map((review: any, idx: number) => {
+                  const authorName = review.author || review.user?.username || 'Anonymous';
+                  const authorImage = review.author_details?.avatar_path 
+                    ? (review.author_details.avatar_path.startsWith('/') 
+                      ? `https://image.tmdb.org/t/p/w200${review.author_details.avatar_path}` 
+                      : review.author_details.avatar_path)
+                    : (review.user?.images?.jpg?.image_url || `https://ui-avatars.com/api/?name=${authorName}&background=random`);
+                  const date = review.created_at || review.date || '';
+                  const content = review.content || review.review || '';
+                  
+                  return (
+                    <div key={review.id || idx} className={`flex gap-3 items-start ${idx > 0 ? 'pt-4 border-t border-border/30' : ''}`}>
+                      <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 mt-0.5">
+                        <Image src={authorImage} alt={authorName} fill className="object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-white">{authorName}</span>
+                          {date && <span className="text-[10px] text-text-muted">{new Date(date).toLocaleDateString()}</span>}
+                        </div>
+                        <p className="text-xs text-text-secondary mb-2 line-clamp-4 hover:line-clamp-none transition-all">
+                          {content.replace(/<[^>]*>?/gm, '')}
+                        </p>
+                        <div className="flex items-center gap-4 text-xs text-text-muted">
+                          <button className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
+                            <ThumbsUp size={12} />
+                            <span>{review.reactions?.nice || 0}</span>
+                          </button>
+                          <button className="hover:text-white transition-colors font-medium cursor-pointer">
+                            ••• More
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-text-muted uppercase font-bold tracking-tighter mb-0.5">{rec.formatLabel}</p>
-                    <p className="text-xs text-white font-medium line-clamp-1 group-hover:text-accent-green transition-colors">{rec.title}</p>
-                  </Link>
-                ))
-              ) : (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="animate-pulse">
-                    <div className="aspect-[3/4] rounded-lg skeleton mb-2" />
-                    <div className="h-3 w-1/2 skeleton rounded" />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* 68 Comments Discussion Ecosystem */}
-          <div className="bg-void rounded-xl border border-border/80 p-4 space-y-4">
-            {/* Top Comments Header Row */}
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">68 Comments</h3>
-              <div className="flex items-center gap-2">
-                <button className="bg-surface border border-border px-3 py-1 rounded text-xs font-bold text-white">
-                  EP 1
-                </button>
-                <button className="flex items-center gap-1 bg-surface border border-border px-2.5 py-1 rounded text-xs font-bold text-text-secondary hover:text-white transition-colors">
-                  <span>Sort by</span>
-                  <ChevronDown size={13} />
-                </button>
+                  );
+                })}
               </div>
             </div>
+          ) : (
+            reviewsLoading && (
+              <div className="bg-void rounded-xl border border-border/80 p-8 flex justify-center items-center">
+                <LoadingSpinner size={24} />
+              </div>
+            )
+          )}
 
-            {/* Input Composer Field */}
-            <div className="flex gap-3 items-start bg-surface/30 p-3 rounded-lg border border-border/40">
-              <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5">
-                <Image src="https://s4.anilist.co/file/anilistcdn/character/large/b66-HHPz6tH3A4QZ.png" alt="User" fill className="object-cover" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <input
-                  type="text"
-                  value={commentInput}
-                  onChange={e => setCommentInput(e.target.value)}
-                  placeholder="Did this episode meet your expectations?"
-                  className="w-full bg-transparent text-xs text-white placeholder:text-text-muted outline-none pb-2 border-b border-border/40 focus:border-accent-green transition-colors"
-                />
-                <div className="flex items-center justify-end gap-3 mt-2">
-                  <label className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-white cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={isSpoiler}
-                      onChange={e => setIsSpoiler(e.target.checked)}
-                      className="accent-accent-green rounded"
-                    />
-                    <span>Spoiler</span>
-                  </label>
-                  <button
-                    onClick={() => {
-                      if (!commentInput.trim()) return;
-                      setCommentInput('');
-                      alert('Comment submitted successfully!');
-                    }}
-                    className="w-6 h-6 rounded-full bg-white hover:bg-gray-200 text-black flex items-center justify-center transition-colors cursor-pointer font-bold"
-                  >
-                    <ArrowUp size={13} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Active Rendered Comment Stream matching screenshot */}
-            <div className="space-y-4 pt-2">
-              <div className="flex gap-3 items-start">
-                <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 mt-0.5">
-                  <Image src="https://s4.anilist.co/file/anilistcdn/character/large/b88366-XWdvdqM5E2QW.png" alt="jozvert" fill className="object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-white">jozvert</span>
-                    <span className="text-[10px] text-text-muted">1y ago</span>
-                  </div>
-                  <p className="text-xs text-white font-bold tracking-wide mb-2">
-                    IS ANYONE SINGLE BI IM LOOKING FOR FINE SHIT
-                  </p>
-                  <div className="flex items-center gap-4 text-xs text-text-muted">
-                    <button className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                      <ThumbsUp size={12} />
-                      <span>3</span>
-                    </button>
-                    <button className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                      <ThumbsDown size={12} />
-                      <span>9</span>
-                    </button>
-                    <button className="hover:text-white transition-colors font-medium cursor-pointer">
-                      Reply
-                    </button>
-                    <button className="hover:text-white transition-colors font-medium cursor-pointer">
-                      ••• More
-                    </button>
-                  </div>
-                  <button className="text-[11px] font-bold text-accent-green mt-2 hover:underline block">
-                    24 replies ▽
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex gap-3 items-start pt-2 border-t border-border/30">
-                <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 mt-0.5">
-                  <Image src="https://s4.anilist.co/file/anilistcdn/character/large/b40-q0LeROWxPGK0.png" alt="subtoshadow991" fill className="object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-white">subtoshadow991</span>
-                    <span className="text-[10px] text-text-muted">1y ago</span>
-                  </div>
-                  <p className="text-xs text-text-secondary mb-2">
-                    Classic golden age animation. Rewatching for the 5th time in anticipation for the ultimate finale arc!
-                  </p>
-                  <div className="flex items-center gap-4 text-xs text-text-muted">
-                    <button className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                      <ThumbsUp size={12} />
-                      <span>45</span>
-                    </button>
-                    <button className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                      <ThumbsDown size={12} />
-                      <span>1</span>
-                    </button>
-                    <button className="hover:text-white transition-colors font-medium cursor-pointer">
-                      Reply
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Recently Updated Block */}
+          <div className="pt-8">
+            <RecentlyUpdated />
           </div>
         </div>
 
@@ -424,8 +427,10 @@ function WatchContent() {
             mediaId={rawId}
             mediaType={mediaType}
             currentEp={epNum}
-            totalEpisodes={mediaType === 'anime' ? (media as any)?.episodes : (media as any)?.number_of_episodes || 1}
+            totalEpisodes={mediaType === 'anime' ? ((media as any)?.episodes || ((media as any)?.nextAiringEpisode?.episode ? (media as any).nextAiringEpisode.episode - 1 : 12)) : (media as any)?.number_of_episodes || 1}
             title={title}
+            nextAiringEpisode={(media as any)?.nextAiringEpisode}
+            recommendations={recommendations}
           />
         </div>
       </div>

@@ -22,52 +22,21 @@ interface EpisodeSidebarProps {
   currentEp: number;
   totalEpisodes: number;
   title: string;
+  nextAiringEpisode?: {
+    episode: number;
+    timeUntilAiring: number;
+    airingAt: number;
+  };
+  recommendations?: Array<{
+    id: string;
+    title: string;
+    posterUrl: string;
+    type: string;
+    formatLabel?: string;
+  }>;
 }
 
-const MORE_LIKE_THIS = [
-  {
-    id: 1,
-    title: 'MONSTERS: 103 Mercies Dragon Damnation',
-    type: 'ONA',
-    season: 'WINTER 2024',
-    poster: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx166882-sQ5iZ848Gk4n.jpg',
-    tag: 'PREQUEL',
-  },
-  {
-    id: 2,
-    title: 'One Piece: Defeat the Pirate Ganzack!',
-    type: 'OVA',
-    season: 'SUMMER 1998',
-    poster: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx2385-u23wS8Wz8x7v.png',
-    tag: 'SIDE STORY',
-  },
-  {
-    id: 3,
-    title: 'One Piece: Umi no Heso no Daibouken',
-    type: 'SPECIAL',
-    season: 'FALL 2000',
-    poster: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx2386-b4p5Xv98x41v.png',
-    tag: 'SIDE STORY',
-  },
-  {
-    id: 4,
-    title: 'ONE PIECE: The Movie',
-    type: 'MOVIE',
-    season: 'WINTER 2000',
-    poster: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx464-m4p5Xv98x41v.png',
-    tag: 'SIDE STORY',
-  },
-  {
-    id: 5,
-    title: 'One Piece: Clockwork Island Adventure',
-    type: 'MOVIE',
-    season: 'SPRING 2001',
-    poster: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx465-m4p5Xv98x41v.png',
-    tag: 'SIDE STORY',
-  },
-];
-
-export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpisodes, title }: EpisodeSidebarProps) {
+export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpisodes, title, nextAiringEpisode, recommendations = [] }: EpisodeSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDesc, setIsDesc] = useState(false);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -88,9 +57,59 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
     load();
   }, [mediaId, mediaType]);
 
+  // Determine the maximum episode number we should display
+  const maxEpToShow = useMemo(() => {
+    let max = currentEp;
+    
+    // Check totalEpisodes prop
+    if (totalEpisodes && totalEpisodes > max) {
+      max = totalEpisodes;
+    }
+    
+    // Check if nextAiringEpisode exists
+    if (nextAiringEpisode?.episode && (nextAiringEpisode.episode - 1) > max) {
+      max = nextAiringEpisode.episode - 1;
+    }
+    
+    // Check if any episode in the list is higher
+    if (episodes.length > 0) {
+      const highestInList = Math.max(...episodes.map(e => e.number));
+      if (highestInList > max) {
+        max = highestInList;
+      }
+    }
+    
+    return max;
+  }, [currentEp, totalEpisodes, nextAiringEpisode, episodes]);
+
+  // Pad the episodes list so that all episodes from 1 to maxEpToShow are present
+  const paddedEpisodes = useMemo(() => {
+    if (maxEpToShow <= 0) return episodes;
+    
+    const epMap = new Map<number, Episode>();
+    episodes.forEach(ep => {
+      epMap.set(ep.number, ep);
+    });
+    
+    const result: Episode[] = [];
+    for (let i = 1; i <= maxEpToShow; i++) {
+      if (epMap.has(i)) {
+        result.push(epMap.get(i)!);
+      } else {
+        result.push({
+          number: i,
+          title: `Episode ${i}`,
+          thumbnail: null,
+          aired: null
+        });
+      }
+    }
+    return result;
+  }, [episodes, maxEpToShow]);
+
   // Apply search query filter and order reverse toggle
   const filteredEpisodes = useMemo(() => {
-    let list = episodes;
+    let list = paddedEpisodes;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -101,10 +120,10 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
       );
     }
     return isDesc ? [...list].reverse() : list;
-  }, [episodes, searchQuery, isDesc]);
+  }, [paddedEpisodes, searchQuery, isDesc]);
 
   // Compute Up Next target title string
-  const nextEpObj = episodes.find(e => e.number === currentEp + 1) || episodes[0];
+  const nextEpObj = paddedEpisodes.find(e => e.number === currentEp + 1) || paddedEpisodes[0];
 
   return (
     <div className="w-full lg:w-[360px] shrink-0 space-y-4">
@@ -229,46 +248,36 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
         </div>
 
         {/* Countdown Alert Strip Bottom */}
-        <div className="p-2.5 bg-void border-t border-border flex items-center justify-center gap-1.5 text-center">
-          <Bell size={12} className="text-text-muted" />
-          <span className="text-xs font-bold text-text-secondary">Next ep airing</span>
-          <span className="text-xs font-bold text-accent-green">in 4 days</span>
-        </div>
+        {nextAiringEpisode && (
+          <div className="p-2.5 bg-void border-t border-border flex items-center justify-center gap-1.5 text-center">
+            <Bell size={12} className="text-text-muted" />
+            <span className="text-xs font-bold text-text-secondary">Next ep {nextAiringEpisode.episode} airing</span>
+            <span className="text-xs font-bold text-accent-green">
+              {nextAiringEpisode.timeUntilAiring 
+                ? `in ${Math.floor(nextAiringEpisode.timeUntilAiring / 86400)}d ${Math.floor((nextAiringEpisode.timeUntilAiring % 86400) / 3600)}h` 
+                : 'soon'}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* More Like This Component Block */}
-      <div className="bg-void rounded-xl border border-border p-3.5 shadow-lg">
-        <h3 className="text-sm font-bold text-white mb-3">More like this</h3>
-        
-        <div className="space-y-2.5">
-          {MORE_LIKE_THIS.map((item) => (
-            <Link
-              key={item.id}
-              href={`/anime/1`} // Target demo redirect path
-              className="flex items-center gap-3 bg-surface/30 hover:bg-surface p-2 rounded-lg border border-border/40 hover:border-accent-green/30 transition-colors group"
-            >
-              {/* Vertical poster left */}
-              <div className="relative w-12 h-16 rounded md overflow-hidden bg-surface shrink-0 border border-white/5">
-                <Image src={item.poster} alt={item.title} fill className="object-cover group-hover:scale-105 transition-transform" />
-              </div>
-
-              {/* Stack metadata right */}
-              <div className="flex-1 min-w-0">
-                <span className="text-[9px] font-bold text-text-muted tracking-wider uppercase block">
-                  {item.tag}
-                </span>
-                <p className="text-xs font-bold text-white line-clamp-1 group-hover:text-accent-green transition-colors mt-0.5">
-                  {item.title}
-                </p>
-                <div className="flex items-center gap-2 text-[10px] text-text-secondary mt-1 font-medium">
-                  <span>{item.type}</span>
-                  <span>{item.season}</span>
+      {/* More Like This (Recommendations) Block */}
+      {recommendations.length > 0 && (
+        <div className="pt-4 space-y-3">
+          <h3 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-1">More Like This</h3>
+          <div className="grid grid-cols-3 gap-2">
+            {recommendations.slice(0, 6).map((rec) => (
+              <Link key={rec.id} href={`/${rec.type}/${rec.id}`} className="group">
+                <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-surface mb-1.5 border border-border/30 group-hover:border-accent-green/50 transition-all">
+                  <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" />
                 </div>
-              </div>
-            </Link>
-          ))}
+                <p className="text-[9px] text-text-muted uppercase font-bold tracking-tighter truncate">{rec.formatLabel}</p>
+                <p className="text-[10px] text-white font-bold line-clamp-1 group-hover:text-accent-green transition-colors leading-tight">{rec.title}</p>
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

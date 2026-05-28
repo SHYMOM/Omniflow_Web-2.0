@@ -46,6 +46,48 @@ export async function GET(request: NextRequest) {
     // Determine content type from URL
     const isPlaylist = targetUrl.includes('.m3u8') || targetUrl.includes('m3u8');
     const isImage = /\.(jpe?g|png|webp|gif|avif|bmp)(\?|$)/i.test(targetUrl);
+    const isSubtitle = searchParams.get('type') === 'sub' || /\.(vtt|srt)(\?|$)/i.test(targetUrl) || targetUrl.includes('subtitle') || targetUrl.includes('subs');
+
+    // ─── SUBTITLE PROXY (with SRT to VTT conversion) ──────────
+    if (isSubtitle) {
+      const response = await axios.get(targetUrl, {
+        headers,
+        responseType: 'text',
+        timeout: 15000,
+        validateStatus: () => true,
+      });
+
+      let textData = response.data;
+      if (typeof textData !== 'string') {
+        textData = String(textData || '');
+      }
+
+      // Strip BOM early before checking format
+      if (textData.charCodeAt(0) === 0xFEFF) {
+        textData = textData.substring(1);
+      }
+
+      // Check if it is SRT format (fails to start with WEBVTT but has SRT pattern)
+      const trimmed = textData.trim();
+      const isSrt = targetUrl.includes('.srt') || searchParams.get('type') === 'sub' || (!trimmed.startsWith('WEBVTT') && /^\d+\s*\n\d{2}:\d{2}:\d{2}/.test(trimmed));
+      
+      if (isSrt && !trimmed.startsWith('WEBVTT')) {
+        // Normalize line endings
+        let vtt = textData.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        // Convert timestamps: replace comma with dot
+        vtt = vtt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+        textData = `WEBVTT\n\n${vtt}`;
+      }
+
+      return new NextResponse(textData, {
+        status: response.status,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/vtt; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
 
     // ─── IMAGE PROXY (for manga pages) ────────────────────────
     if (isImage) {

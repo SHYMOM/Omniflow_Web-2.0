@@ -6,8 +6,11 @@ export class StremioExtractor {
   private readonly addons = [
     // MediaFusion public
     'https://mediafusion.elfhosted.com',
-    // AIOStreams default pattern (just as an example if it's hosted locally)
-    // 'http://localhost:3000'
+    // Torrentio (with RD stripped if needed, or HTTP streams)
+    'https://torrentio.strem.fun',
+    // CinePro / Shluflix / KnightCrawler
+    'https://knightcrawler.elfhosted.com',
+    'https://shluflix.elfhosted.com'
   ];
 
   constructor() {
@@ -21,7 +24,7 @@ export class StremioExtractor {
     season?: number,
     preResolvedImdbId?: string
   ): Promise<IStreamResult> {
-    const imdbId = preResolvedImdbId || await this.getImdbId(tmdbId, mediaType as 'movie' | 'tv');
+    const imdbId = preResolvedImdbId || await this.getImdbId(tmdbId, mediaType);
     console.log("IMDB ID:", imdbId);
     if (!imdbId) {
       return this.emptyResult();
@@ -78,16 +81,29 @@ export class StremioExtractor {
     return 'auto';
   }
 
-  private async getImdbId(tmdbId: string, type: 'movie' | 'tv'): Promise<string | null> {
+  private async getImdbId(tmdbId: string, type: 'movie' | 'tv' | 'anime'): Promise<string | null> {
     const TMDB_KEY = process.env.TMDB_API_KEY || '';
-    try {
-      const res = await this.stealthClient.get(
-        `https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${TMDB_KEY}`
-      );
-      return res.data?.imdb_id || null;
-    } catch {
-      return null;
+    if (!TMDB_KEY) return null;
+
+    const fetchId = async (t: 'tv' | 'movie') => {
+      try {
+        const res = await this.stealthClient.get(
+          `https://api.themoviedb.org/3/${t}/${tmdbId}/external_ids?api_key=${TMDB_KEY}`,
+          { timeout: 3000 }
+        );
+        return res.data?.imdb_id || null;
+      } catch {
+        return null;
+      }
+    };
+
+    if (type === 'anime') {
+      const tvId = await fetchId('tv');
+      if (tvId) return tvId;
+      return fetchId('movie');
     }
+
+    return fetchId(type);
   }
 
   private emptyResult(): IStreamResult {

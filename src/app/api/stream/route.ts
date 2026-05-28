@@ -23,6 +23,7 @@ interface StreamApiResponse {
   intro?: { start: number; end: number };
   outro?: { start: number; end: number };
   availableLanguages?: string[];
+  audioTracks?: Array<{ language: string; label: string; default?: boolean }>;
   isM3U8?: boolean;
 }
 
@@ -40,14 +41,18 @@ interface StreamApiResponse {
  *   - dubbed:  'true' | 'false' (for anime sub/dub preference)
  */
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const { searchParams } = new URL(request.url);
     const mediaType = searchParams.get('type') || 'anime';
     const id = searchParams.get('id') || '';
-    const episode = Number(searchParams.get('episode') || '1');
-    const season = Number(searchParams.get('season') || '1');
+    const parsedEpisode = parseInt(searchParams.get('episode') || '1', 10);
+    const episode = isNaN(parsedEpisode) ? 1 : parsedEpisode;
+    const parsedSeason = parseInt(searchParams.get('season') || '1', 10);
+    const season = isNaN(parsedSeason) ? 1 : parsedSeason;
     const isDubbed = searchParams.get('dubbed') === 'true';
     const lang = searchParams.get('lang') || 'sub';
+    const titleParam = searchParams.get('title') || '';
 
     if (!id) {
       return NextResponse.json<StreamApiResponse>(
@@ -61,7 +66,7 @@ export async function GET(request: NextRequest) {
     // ─── ANIME ─────────────────────────────────────────────
     if (mediaType === 'anime') {
       // Resolve title first
-      const title = await animeService.resolveTitle(id);
+      const title = titleParam || await animeService.resolveTitle(id);
 
       const ctx: ExtractionContext = {
         mediaId: id,
@@ -80,7 +85,7 @@ export async function GET(request: NextRequest) {
 
       const ctx: ExtractionContext = {
         mediaId: id,
-        title: resolved.title,
+        title: titleParam || resolved.title,
         episode,
         season,
         mediaType: mediaType as 'movie' | 'tv',
@@ -121,11 +126,43 @@ export async function GET(request: NextRequest) {
       }
 
       // Proxy the source URL through our stream proxy
-      const extension = defaultSource.isM3U8 ? '&ext=.m3u8' : '&ext=.mp4';
-      const proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(finalUrl)}&referer=${encodeURIComponent(finalReferer)}${extension}`;
+      let proxiedUrl = finalUrl;
+      if (!finalUrl.includes('/api/stream/proxy')) {
+        const extension = defaultSource.isM3U8 ? '&ext=.m3u8' : '&ext=.mp4';
+        proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(finalUrl)}&referer=${encodeURIComponent(finalReferer)}${extension}`;
+      } else if (finalUrl.startsWith('/')) {
+        proxiedUrl = `${request.nextUrl.origin}${finalUrl}`;
+      }
+
+      // Fetch external subtitles
+      try {
+        const { fetchExternalSubtitles } = await import('@/lib/extraction/subtitle.service');
+        let tmdbId = '';
+        if (id.startsWith('tmdb-movie-')) tmdbId = id.replace('tmdb-movie-', '');
+        else if (id.startsWith('tmdb-tv-')) tmdbId = id.replace('tmdb-tv-', '');
+        else if (mediaType === 'anime') {
+          const mapped = await animeService.mapIds(id);
+          tmdbId = mapped.tmdbId || '';
+        }
+        
+        if (tmdbId) {
+           const extSubs = await fetchExternalSubtitles(tmdbId, mediaType as any, season, episode);
+           if (!streamResult.subtitles) streamResult.subtitles = [];
+           extSubs.forEach(ext => {
+              streamResult.subtitles.push({
+                 label: ext.label,
+                 lang: ext.lang,
+                 url: ext.url,
+                 default: false
+              });
+           });
+        }
+      } catch (err) {
+        console.error('Failed to fetch external subs in route:', err);
+      }
 
       // Map subtitles to response format
-      const subtitles = streamResult.subtitles.map(sub => {
+      const subtitles = (streamResult.subtitles || []).map(sub => {
         let subUrl = sub.url;
         let subReferer = '';
         if (subUrl.includes('/v1/proxy?data=')) {
@@ -141,7 +178,12 @@ export async function GET(request: NextRequest) {
         }
         
         // Proxy subtitle URLs as well to avoid CORS issues
-        const proxySubUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(subUrl)}&referer=${encodeURIComponent(subReferer)}`;
+        let proxySubUrl = subUrl;
+        if (!subUrl.includes('/api/stream/proxy')) {
+          proxySubUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(subUrl)}&referer=${encodeURIComponent(subReferer)}&type=sub`;
+        } else if (subUrl.startsWith('/')) {
+          proxySubUrl = `${request.nextUrl.origin}${subUrl}`;
+        }
         
         return {
           label: sub.label,
@@ -161,7 +203,12 @@ export async function GET(request: NextRequest) {
         intro: streamResult.intro,
         outro: streamResult.outro,
         availableLanguages: streamResult.availableLanguages,
+        audioTracks: streamResult.audioTracks,
         isM3U8: defaultSource.isM3U8,
+      }, {
+        headers: {
+          'X-Stream-Resolve-Time': `${Date.now() - startTime}ms`
+        }
       });
     }
 
@@ -174,6 +221,10 @@ export async function GET(request: NextRequest) {
         source: 'iframe',
         iframeUrl: streamResult.iframeUrl,
         provider: streamResult.provider,
+      }, {
+        headers: {
+          'X-Stream-Resolve-Time': `${Date.now() - startTime}ms`
+        }
       });
     }
 
@@ -181,6 +232,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json<StreamApiResponse>({
       success: false,
       source: 'iframe',
+    }, {
+      headers: {
+        'X-Stream-Resolve-Time': `${Date.now() - startTime}ms`
+      }
     });
   } catch (error: any) {
     console.error('[API /stream] Error:', error?.message || error);

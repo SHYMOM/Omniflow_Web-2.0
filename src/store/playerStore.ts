@@ -19,6 +19,14 @@ interface PlayerState {
   setDownloadUrl: (url: string | null) => void;
   availableLanguages: string[];
   setAvailableLanguages: (langs: string[]) => void;
+  
+  // Phase 4 Dynamic State
+  availableStreams: { language: string; sourceUrl: string; type: 'm3u8' | 'mp4' }[];
+  setAvailableStreams: (streams: { language: string; sourceUrl: string; type: 'm3u8' | 'mp4' }[]) => void;
+  externalSubtitles: { lang: string; url: string }[];
+  setExternalSubtitles: (subs: { lang: string; url: string }[]) => void;
+  currentLanguage: string;
+  setCurrentLanguage: (lang: string) => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
@@ -40,4 +48,11 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   setDownloadUrl: (url) => set({ downloadUrl: url }),
   availableLanguages: ['sub'],
   setAvailableLanguages: (langs) => set({ availableLanguages: langs }),
+  
+  availableStreams: [],
+  setAvailableStreams: (streams) => set({ availableStreams: streams }),
+  externalSubtitles: [],
+  setExternalSubtitles: (subs) => set({ externalSubtitles: subs }),
+  currentLanguage: 'sub',
+  setCurrentLanguage: (lang) => set({ currentLanguage: lang }),
 }));

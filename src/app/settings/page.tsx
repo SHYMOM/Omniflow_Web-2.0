@@ -13,12 +13,14 @@ import {
   Bell,
   LogOut,
   ChevronRight,
-  Check
+  Check,
+  Subtitles
 } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils/cn';
 
 export default function SettingsPage() {
-  const { user, signOut, settings, updateSettings } = useUserStore();
+  const { user, signOut, settings, updateSettings, subtitleSettings, updateSubtitleSettings } = useUserStore();
   const [activeTab, setActiveTab] = useState('General');
 
   const tabs = [
@@ -26,6 +28,7 @@ export default function SettingsPage() {
     { id: 'Account', icon: User },
     { id: 'Playback', icon: PlayCircle },
     { id: 'Interface', icon: Monitor },
+    { id: 'Subtitles', icon: Subtitles },
     { id: 'Privacy', icon: ShieldCheck },
   ];
 
@@ -158,6 +161,163 @@ export default function SettingsPage() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeTab === 'Subtitles' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <section>
+                <h3 className="text-lg font-bold text-white mb-4">Subtitle Appearance</h3>
+                
+                {/* Live Preview */}
+                <div className="relative w-full aspect-video md:aspect-[21/9] bg-black rounded-xl overflow-hidden mb-6 border border-border flex flex-col p-4">
+                  <Image src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg" alt="Preview Background" fill className="object-cover opacity-40" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                  
+                  {/* The actual subtitle preview */}
+                  <div className="relative flex-1 flex flex-col z-10 w-full h-full">
+                    <div 
+                      className="w-full text-center transition-all duration-300"
+                      style={{
+                        fontFamily: subtitleSettings?.fontFamily || 'Inter',
+                        fontSize: `${subtitleSettings?.fontSize || 32}px`,
+                        color: subtitleSettings?.fontColor || '#ffffff',
+                        backgroundColor: subtitleSettings?.backgroundColor ? `${subtitleSettings.backgroundColor}${Math.floor((subtitleSettings.backgroundOpacity ?? 0.5) * 255).toString(16).padStart(2, '0')}` : 'rgba(0,0,0,0.5)',
+                        textShadow: (subtitleSettings?.outlineWidth || 0) > 0 
+                          ? `0 0 ${subtitleSettings.outlineWidth}px ${subtitleSettings.outlineColor}, 0 0 ${subtitleSettings.outlineWidth}px ${subtitleSettings.outlineColor}`
+                          : 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        display: 'inline-block',
+                        margin: '0 auto',
+                        marginBottom: subtitleSettings?.position === 'bottom' ? `${subtitleSettings.offsetY ?? 20}px` : 'auto',
+                        marginTop: subtitleSettings?.position === 'top' ? `${subtitleSettings.offsetY ?? 20}px` : 'auto',
+                        lineHeight: '1.2'
+                      }}
+                    >
+                      I will become the Pirate King!
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Font Family */}
+                  <div className="p-4 rounded-xl border border-border bg-void/30">
+                    <label className="block text-sm font-bold text-white mb-2">Font Family</label>
+                    <select 
+                      className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent-green"
+                      value={subtitleSettings?.fontFamily || 'Inter'}
+                      onChange={(e) => updateSubtitleSettings({ fontFamily: e.target.value })}
+                    >
+                      <option value="Inter">Inter</option>
+                      <option value="Roboto">Roboto</option>
+                      <option value="Arial">Arial</option>
+                      <option value="Trebuchet MS">Trebuchet MS</option>
+                      <option value="Courier New">Courier New</option>
+                      <option value="Georgia">Georgia</option>
+                    </select>
+                  </div>
+
+                  {/* Font Size */}
+                  <div className="p-4 rounded-xl border border-border bg-void/30">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-sm font-bold text-white">Font Size</label>
+                      <span className="text-xs text-accent-green font-mono">{subtitleSettings?.fontSize || 32}px</span>
+                    </div>
+                    <input 
+                      type="range" min="14" max="64" 
+                      value={subtitleSettings?.fontSize || 32}
+                      onChange={(e) => updateSubtitleSettings({ fontSize: Number(e.target.value) })}
+                      className="w-full accent-accent-green"
+                    />
+                  </div>
+
+                  {/* Colors */}
+                  <div className="p-4 rounded-xl border border-border bg-void/30 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-white">Text Color</label>
+                      <input 
+                        type="color" 
+                        value={subtitleSettings?.fontColor || '#ffffff'}
+                        onChange={(e) => updateSubtitleSettings({ fontColor: e.target.value })}
+                        className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-white">Background Color</label>
+                      <input 
+                        type="color" 
+                        value={subtitleSettings?.backgroundColor || '#000000'}
+                        onChange={(e) => updateSubtitleSettings({ backgroundColor: e.target.value })}
+                        className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-white">Outline Color</label>
+                      <input 
+                        type="color" 
+                        value={subtitleSettings?.outlineColor || '#000000'}
+                        onChange={(e) => updateSubtitleSettings({ outlineColor: e.target.value })}
+                        className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Opacity & Position */}
+                  <div className="p-4 rounded-xl border border-border bg-void/30 space-y-4">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-bold text-white">Background Opacity</label>
+                        <span className="text-[10px] text-accent-green">{Math.round((subtitleSettings?.backgroundOpacity ?? 0.5) * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="1" step="0.1"
+                        value={subtitleSettings?.backgroundOpacity ?? 0.5}
+                        onChange={(e) => updateSubtitleSettings({ backgroundOpacity: Number(e.target.value) })}
+                        className="w-full accent-accent-green"
+                      />
+                    </div>
+                    
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-bold text-white">Outline Width</label>
+                        <span className="text-[10px] text-accent-green">{subtitleSettings?.outlineWidth || 0}px</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="4" step="1"
+                        value={subtitleSettings?.outlineWidth || 0}
+                        onChange={(e) => updateSubtitleSettings({ outlineWidth: Number(e.target.value) })}
+                        className="w-full accent-accent-green"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-bold text-white">Vertical Offset</label>
+                        <span className="text-[10px] text-accent-green">{subtitleSettings?.offsetY ?? 20}px</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="100" step="5"
+                        value={subtitleSettings?.offsetY ?? 20}
+                        onChange={(e) => updateSubtitleSettings({ offsetY: Number(e.target.value) })}
+                        className="w-full accent-accent-green"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-4 flex justify-end">
+                  <button 
+                    onClick={() => updateSubtitleSettings({
+                      fontFamily: 'Inter', fontSize: 32, fontColor: '#ffffff', backgroundColor: '#000000', 
+                      backgroundOpacity: 0.5, outlineColor: '#000000', outlineWidth: 2, position: 'bottom', offsetY: 20
+                    })}
+                    className="text-xs font-bold text-text-secondary hover:text-white px-4 py-2 rounded-lg bg-surface hover:bg-surface-hover transition-colors cursor-pointer"
+                  >
+                    Reset to Defaults
+                  </button>
                 </div>
               </section>
             </div>

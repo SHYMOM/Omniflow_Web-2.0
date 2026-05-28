@@ -100,11 +100,12 @@ export class MovieExtractionService {
       }
     }
 
-    const cacheKey = `stream:movie:${tmdbId}:s${season}e${episode}`;
+    const isHindi = ctx.language === 'hin';
+    const isEngDub = ctx.language === 'eng' || ctx.isDubbed;
+    
+    const cacheKey = `stream:movie:${tmdbId}:s${season}e${episode}:lang:${ctx.language || 'sub'}`;
     const cached = await getCachedStream(cacheKey);
     if (cached) return cached;
-
-    const isHindi = ctx.language === 'hin';
 
     const providers: ProviderEntry<IStreamResult>[] = [
       {
@@ -153,9 +154,14 @@ export class MovieExtractionService {
       },
       {
         name: 'moviehdwatch',
-        priority: 5,
+        priority: isHindi || isEngDub ? 0 : 5, // Bump priority if explicitly searching for a dub
         mediaTypes: ['movie', 'tv'],
-        execute: () => this.extractFromMovieHdWatch(title, mediaType, episode, season),
+        execute: () => {
+          let searchTitle = title;
+          if (isHindi) searchTitle += ' Hindi';
+          else if (isEngDub) searchTitle += ' Dubbed';
+          return this.extractFromMovieHdWatch(searchTitle, mediaType, episode, season);
+        }
       },
     ];
 
@@ -174,7 +180,17 @@ export class MovieExtractionService {
     const result = await this.registry.executeConcurrently(providers);
 
     if (result.success && result.data) {
+      // Set default available languages immediately to avoid blocking the client
       result.data.availableLanguages = ['eng', 'hin'];
+
+      // Perform language discovery in the background to update the cache asynchronously
+      this.discoverAvailableLanguages(title).then(async (discoveredLangs) => {
+        if (result.data) {
+          result.data.availableLanguages = discoveredLangs;
+          await setCachedStream(cacheKey, result.data, 10800);
+        }
+      }).catch(() => {});
+
       await setCachedStream(cacheKey, result.data, 10800); // 3 hours
       return result.data;
     }
@@ -186,6 +202,23 @@ export class MovieExtractionService {
       subtitles: [],
       headers: {},
     };
+  }
+
+  // ─── Parallel Language Discovery ─────────────────────────────
+
+  private async discoverAvailableLanguages(title: string): Promise<string[]> {
+    const langs = ['eng'];
+    try {
+      const mhdw = new MOVIES.MovieHdWatch();
+      const probe = await mhdw.search(`${title} Hindi`);
+      if (probe.results && probe.results.length > 0) {
+        langs.push('hin');
+      }
+    } catch (e) {
+      console.warn('[MovieExtraction] Language discovery probe failed:', e);
+      return ['eng', 'hin']; // fallback
+    }
+    return langs;
   }
 
   // ─── Provider Implementations ────────────────────────────────

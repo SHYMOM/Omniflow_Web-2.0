@@ -39,6 +39,8 @@ export class ProviderRegistry {
   async executeConcurrently<T>(
     providers: ProviderEntry<T>[]
   ): Promise<IProviderResult<T>> {
+    const overallStartTime = Date.now();
+    
     // 1. Fire all provider requests immediately at T=0 for maximum concurrency
     const executions = providers.map((provider) => {
       const promise = (async () => {
@@ -106,6 +108,7 @@ export class ProviderRegistry {
       try {
         const tierPromises = tiers.get(priority)!;
         const winner = await Promise.any(tierPromises);
+        console.log(`[ProviderRegistry] 🏎️ Race won by ${winner.provider} in ${Date.now() - overallStartTime}ms (Tier ${priority})`);
         return winner;
       } catch (aggregateError) {
         // All providers in this tier failed, gracefully fall back to the next tier

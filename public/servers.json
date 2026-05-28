@@ -6,8 +6,8 @@
     "patterns": {
       "movie": "/movie/{tmdbId}",
       "tv": "/tv/{tmdbId}/{season}/{episode}",
-      "anime_sub": "/anime/{malId}/{episode}/sub",
-      "anime_dub": "/anime/{malId}/{episode}/dub"
+      "anime_sub": "/animepahe/{malId}/{episode}/sub",
+      "anime_dub": "/animepahe/{malId}/{episode}/dub"
     },
     "quality": [
       "1080p",

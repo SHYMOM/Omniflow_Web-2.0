@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['192.168.0.106'],
+  allowedDevOrigins: ["192.168.0.106"],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'image.tmdb.org' },
@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'i.ytimg.com' },
       { protocol: 'https', hostname: 'shikimori.one' },
       { protocol: 'https', hostname: 'api.dicebear.com' },
+      { protocol: 'https', hostname: 'ui-avatars.com' },
     ],
   },
 };

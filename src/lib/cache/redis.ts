@@ -9,15 +9,18 @@ const globalForRedis = global as unknown as { redis: Redis };
 export const redis = globalForRedis.redis || new Redis(redisUrl, {
   maxRetriesPerRequest: 0, // FAIL FAST: Do not retry if Redis is down
   commandTimeout: 1000,    // 1 second timeout maximum
-  retryStrategy: () => null // Disable automatic reconnection spam
+  retryStrategy: (times) => {
+    // Reconnect with exponential delay, capping at 10 seconds
+    return Math.min(times * 1000, 10000);
+  }
 });
 
 if (process.env.NODE_ENV !== 'production') globalForRedis.redis = redis;
 
 // Suppress unhandled rejections if Redis is down
 redis.on('error', (err) => {
-  if (err.message.includes('ECONNREFUSED')) {
-    // console.warn('Redis is offline, caching will be skipped');
+  if (err.message.includes('ECONNREFUSED') || err.message.includes('closed') || err.message.includes('Connection is closed')) {
+    // Suppress connection refused/closed warnings
   } else {
     console.warn('[Redis] Error:', err.message);
   }
@@ -27,6 +30,7 @@ redis.on('error', (err) => {
  * Get a cached stream result from Redis
  */
 export async function getCachedStream(key: string): Promise<IStreamResult | null> {
+  if (redis.status !== 'ready') return null;
   try {
     const cached = await redis.get(key);
     if (cached) {
@@ -43,6 +47,7 @@ export async function getCachedStream(key: string): Promise<IStreamResult | null
  * @param ttlSeconds Default is 10800 (3 hours)
  */
 export async function setCachedStream(key: string, data: IStreamResult, ttlSeconds: number = 10800): Promise<void> {
+  if (redis.status !== 'ready') return;
   try {
     await redis.setex(key, ttlSeconds, JSON.stringify(data));
   } catch (error) {

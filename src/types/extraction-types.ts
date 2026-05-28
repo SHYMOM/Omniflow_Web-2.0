@@ -35,6 +35,7 @@ export interface IStreamResult {
   download?: string;
   iframeUrl?: string;    // Fallback embed URL when direct extraction fails
   availableLanguages?: string[]; // Discovered languages ('sub', 'dub', etc.)
+  audioTracks?: Array<{ language: string; label: string; default?: boolean }>;
 }
 
 // ─── Manga Page Extraction ───────────────────────────────────

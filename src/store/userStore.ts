@@ -37,7 +37,19 @@ interface UserState {
     brandColor: string;
     incognitoMode: boolean;
   };
+  subtitleSettings: {
+    fontFamily: string;
+    fontSize: number;
+    fontColor: string;
+    backgroundColor: string;
+    backgroundOpacity: number;
+    outlineColor: string;
+    outlineWidth: number;
+    position: 'bottom' | 'top';
+    offsetY: number;
+  };
   updateSettings: (settings: Partial<UserState['settings']>) => void;
+  updateSubtitleSettings: (settings: Partial<UserState['subtitleSettings']>) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -126,6 +138,19 @@ export const useUserStore = create<UserState>()(
       },
       updateSettings: (newSettings) =>
         set((state) => ({ settings: { ...state.settings, ...newSettings } })),
+      subtitleSettings: {
+        fontFamily: 'Inter',
+        fontSize: 32,
+        fontColor: '#ffffff',
+        backgroundColor: '#000000',
+        backgroundOpacity: 0.5,
+        outlineColor: '#000000',
+        outlineWidth: 2,
+        position: 'bottom',
+        offsetY: 20,
+      },
+      updateSubtitleSettings: (newSettings) =>
+        set((state) => ({ subtitleSettings: { ...state.subtitleSettings, ...newSettings } })),
     }),
     {
       name: 'omnistream-user-store',
@@ -135,6 +160,7 @@ export const useUserStore = create<UserState>()(
         history: state.history,
         historyPaused: state.historyPaused,
         settings: state.settings,
+        subtitleSettings: state.subtitleSettings,
       }),
     }
   )
