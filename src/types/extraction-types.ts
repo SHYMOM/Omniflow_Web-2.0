@@ -10,6 +10,8 @@ export interface IStreamSource {
   url: string;
   quality: string;       // 'auto' | '1080p' | '720p' | '480p' | '360p' | 'default'
   isM3U8: boolean;
+  referer?: string;
+  provider?: any;
 }
 
 export interface IStreamSubtitle {

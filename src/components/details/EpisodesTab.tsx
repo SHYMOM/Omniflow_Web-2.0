@@ -78,10 +78,10 @@ export default function EpisodesTab({ media }: EpisodesTabProps) {
           >
             <div className="relative aspect-video rounded-xl overflow-hidden bg-surface mb-2.5 border border-white/5 group-hover:border-accent-green/40 transition-all shadow-lg">
               {ep.thumbnail ? (
-                <Image src={ep.thumbnail} alt={ep.title} fill className="object-cover group-hover:scale-110 transition-transform duration-700" />
+                <Image src={ep.thumbnail} alt={ep.title} fill className="object-cover group-hover:scale-110 transition-transform duration-700" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-void">
-                  <Image src={posterUrl} alt="" fill className="object-cover opacity-20 blur-sm" />
+                  <Image src={posterUrl} alt="" fill className="object-cover opacity-20 blur-sm" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   <span className="relative z-10 text-[10px] text-text-muted font-black uppercase tracking-widest">No Preview</span>
                 </div>
               )}

@@ -194,7 +194,7 @@ export default function OverviewTab({ media }: OverviewTabProps) {
               <div key={char.id} className="flex items-center justify-between bg-surface rounded-lg p-3 border border-border">
                 <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-void shrink-0">
-                    <Image src={char.image} alt={char.name} fill className="object-cover" />
+                    <Image src={char.image} alt={char.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   </div>
                   <div>
                     <p className="text-sm text-white font-medium">{char.name}</p>
@@ -208,7 +208,7 @@ export default function OverviewTab({ media }: OverviewTabProps) {
                       <p className="text-xs text-text-secondary">{char.voiceActor.language}</p>
                     </div>
                     <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-void shrink-0">
-                      <Image src={char.voiceActor.image} alt={char.voiceActor.name} fill className="object-cover" />
+                      <Image src={char.voiceActor.image} alt={char.voiceActor.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                     </div>
                   </div>
                 )}
@@ -236,7 +236,7 @@ export default function OverviewTab({ media }: OverviewTabProps) {
             {displayStaff.map((s) => (
               <div key={s.id} className="shrink-0 w-[100px] text-center">
                 <div className="relative w-20 h-24 rounded-lg overflow-hidden bg-surface mx-auto mb-2">
-                   <Image src={s.image} alt={s.name} fill className="object-cover" />
+                   <Image src={s.image} alt={s.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                 </div>
                 <p className="text-[10px] text-accent-green font-bold uppercase tracking-tighter mb-0.5 line-clamp-1">{s.role}</p>
                 <p className="text-xs text-white font-medium line-clamp-1">{s.name}</p>

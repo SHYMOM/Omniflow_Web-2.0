@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import Image from 'next/image';
+import { createClient } from '@/utils/supabase/client';
 import { 
   Info, X, ThumbsUp, ThumbsDown, Mic, Server as ServerIcon, 
   Share2, Download, Flag, MessageSquare, ChevronDown, ArrowUp, Check 
@@ -44,6 +45,7 @@ function WatchContent() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [inWatchlist, setInWatchlist] = useState(false);
   const [showShareTooltip, setShowShareTooltip] = useState(false);
+  const [activeAd, setActiveAd] = useState<any>(null);
 
   const toggleWatchlist = () => setInWatchlist(!inWatchlist);
   const handleShare = () => {
@@ -112,6 +114,32 @@ function WatchContent() {
   useEffect(() => {
     fetch('/servers.json').then(r => r.json()).then(setServersList).catch(() => {});
   }, []);
+
+  // Fetch targeted media ads
+  useEffect(() => {
+    const fetchAd = async () => {
+      const supabase = createClient();
+      
+      const { data: settingsData } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'global_ads_enabled')
+        .single();
+        
+      if (settingsData && settingsData.value === 'false') return;
+
+      const { data: adData } = await supabase
+        .from('media_ads')
+        .select('*')
+        .eq('is_active', true)
+        .or(`media_id.eq.${rawId},media_id.eq.${mediaId}`)
+        .limit(1)
+        .single();
+
+      if (adData) setActiveAd(adData);
+    };
+    if (rawId && mediaId) fetchAd();
+  }, [rawId, mediaId, mediaType]);
 
   // Normalization logic for different API responses
   const title = mediaType === 'anime' 
@@ -235,7 +263,7 @@ function WatchContent() {
                   alt={seriesTitle}
                   fill
                   className="object-cover"
-                />
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
               </div>
               <div>
                 <p className="text-sm font-bold text-white tracking-wide group-hover:text-accent-green transition-colors">{seriesTitle}</p>
@@ -311,6 +339,30 @@ function WatchContent() {
             </button>
           </div>
 
+          {/* Targeted Media Ad Banner */}
+          {activeAd && (
+            <div className="w-full relative group rounded-xl overflow-hidden border border-border/50 shadow-lg bg-surface mt-4 mb-2 animate-fade-in block">
+              <a href={activeAd.target_url} target="_blank" rel="noopener noreferrer" className="block relative w-full h-[100px] sm:h-[120px] md:h-[150px]">
+                <Image 
+                  src={activeAd.image_url} 
+                  alt={activeAd.title || 'Advertisement'} 
+                  fill 
+                  className="object-cover group-hover:scale-105 transition-transform duration-500" 
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 100vw, 100vw"
+                />
+                <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-widest border border-white/20">
+                  Advertisement
+                </div>
+                {/* Hover overlay */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <span className="bg-accent-green text-black font-bold text-xs px-4 py-2 rounded-full shadow-xl transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                    Visit Sponsor
+                  </span>
+                </div>
+              </a>
+            </div>
+          )}
+
           {/* Expandable Description Box Block */}
           <div
             onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
@@ -382,7 +434,7 @@ function WatchContent() {
                   return (
                     <div key={review.id || idx} className={`flex gap-3 items-start ${idx > 0 ? 'pt-4 border-t border-border/30' : ''}`}>
                       <div className="relative w-8 h-8 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 mt-0.5">
-                        <Image src={authorImage} alt={authorName} fill className="object-cover" />
+                        <Image src={authorImage} alt={authorName} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">

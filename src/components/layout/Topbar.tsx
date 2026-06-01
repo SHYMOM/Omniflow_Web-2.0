@@ -85,7 +85,7 @@ export default function Topbar() {
       {/* Mobile search */}
       <button
         onClick={() => setSearchModalOpen(true)}
-        className="sm:hidden p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary hover:text-white"
+        className="sm:hidden p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary hover:text-white pointer-events-auto"
         aria-label="Search"
       >
         <Search size={20} />
@@ -93,7 +93,7 @@ export default function Topbar() {
 
       {/* Bell */}
       <button
-        className="p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary hover:text-white relative"
+        className="p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary hover:text-white relative pointer-events-auto"
         aria-label="Notifications"
       >
         <Bell size={20} />
@@ -101,7 +101,7 @@ export default function Topbar() {
 
       {/* Auth / User */}
       {user ? (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pointer-events-auto">
           <Link
             href="/settings"
             className={cn(
@@ -125,7 +125,7 @@ export default function Topbar() {
       ) : (
         <button
           onClick={() => setAuthModalOpen(true)}
-          className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-surface"
+          className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-surface pointer-events-auto"
         >
           <LogIn size={16} />
           <span className="hidden md:inline">Sign in</span>

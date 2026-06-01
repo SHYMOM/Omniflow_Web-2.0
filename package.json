@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@omss/framework": "^1.1.26",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.2",
     "@tanstack/react-query": "^5.100.10",
     "@types/crypto-js": "^4.2.2",
+    "@types/pg": "^8.20.0",
     "ascii-url-encoder": "^1.2.0",
     "axios": "^1.16.1",
     "cheerio": "^1.2.0",
@@ -24,6 +27,7 @@
     "lucide-react": "^1.14.0",
     "next": "16.2.6",
     "node-cache": "^5.1.2",
+    "pg": "^8.21.0",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "19.2.4",
@@ -33,6 +37,7 @@
     "react-youtube": "^10.1.0",
     "swiper": "^12.1.4",
     "tailwind-merge": "^3.6.0",
+    "ws": "^8.21.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

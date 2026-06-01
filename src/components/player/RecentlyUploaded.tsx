@@ -67,7 +67,7 @@ export default function RecentlyUploaded() {
               className="flex items-center gap-3 bg-surface/30 hover:bg-surface p-2 rounded-lg border border-border/40 hover:border-accent-green/30 transition-colors group"
             >
               <div className="relative w-12 h-16 rounded overflow-hidden bg-surface shrink-0 border border-white/5">
-                <Image src={poster} alt={title} fill className="object-cover group-hover:scale-105 transition-transform" />
+                <Image src={poster} alt={title} fill className="object-cover group-hover:scale-105 transition-transform" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-[9px] font-bold text-accent-green tracking-wider uppercase block">

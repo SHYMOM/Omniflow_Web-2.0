@@ -51,7 +51,7 @@ export default function DetailHeader({ media, mediaType }: DetailHeaderProps) {
     <div className="relative">
       {/* Banner */}
       <div className="relative w-full h-[250px] md:h-[300px] overflow-hidden">
-        {bannerUrl && <Image src={bannerUrl} alt="" fill className="object-cover" priority />}
+        {bannerUrl && <Image src={bannerUrl} alt="" fill className="object-cover" priority sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />}
         <div className="absolute inset-0 bg-gradient-to-t from-void via-void/60 to-transparent" />
       </div>
 
@@ -65,7 +65,7 @@ export default function DetailHeader({ media, mediaType }: DetailHeaderProps) {
         <div className="flex gap-5 items-end">
           {/* Poster */}
           <div className="relative w-[120px] md:w-[140px] h-[170px] md:h-[200px] rounded-xl overflow-hidden border-2 border-border shadow-xl shrink-0">
-            {posterUrl && <Image src={posterUrl} alt={title} fill className="object-cover" />}
+            {posterUrl && <Image src={posterUrl} alt={title} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />}
           </div>
 
           {/* Info */}

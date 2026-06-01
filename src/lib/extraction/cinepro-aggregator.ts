@@ -33,11 +33,21 @@ export class CineproAggregator {
         throw new Error(`No sources found by ${provider.name}`);
       }
       
-      const mappedSources: IStreamSource[] = result.sources.map((s: any) => ({
-        url: s.url,
-        quality: this.mapQuality(s.quality),
-        isM3U8: s.type === 'hls',
-      }));
+      const mappedSources: IStreamSource[] = result.sources.map((s: any) => {
+        let referer = s.headers?.Referer || s.headers?.referer || '';
+        if (!referer && s.provider?.id === 'vidsrc') referer = 'https://cloudnestra.com/';
+        if (!referer && s.provider?.id === 'vidnest') referer = 'https://vidnest.fun/';
+        if (!referer && s.provider?.id === 'vidapi') referer = 'https://vidapi.movie/';
+        if (!referer && s.provider?.id === 'vidlink') referer = 'https://vidlink.pro/';
+        
+        return {
+          url: s.url,
+          quality: this.mapQuality(s.quality),
+          isM3U8: s.type === 'hls',
+          referer,
+          provider: s.provider
+        };
+      });
 
       const mappedSubtitles: IStreamSubtitle[] = (result.subtitles || []).map((s: any) => ({
         url: s.url,

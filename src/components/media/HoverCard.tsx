@@ -147,7 +147,7 @@ export default function HoverCard({ media, parentRef, onMouseEnter, onMouseLeave
               <div className="absolute inset-0 z-20 pointer-events-auto bg-transparent" />
             </div>
           ) : bgUrl ? (
-            <Image src={bgUrl} alt={title} fill className="object-cover" unoptimized={bgUrl.includes('youtube')} />
+            <Image src={bgUrl} alt={title} fill className="object-cover" unoptimized={bgUrl.includes('youtube')} sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
           ) : null}
 
           {trailerYoutubeId && (

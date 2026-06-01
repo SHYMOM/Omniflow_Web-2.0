@@ -31,7 +31,7 @@ export default function CharactersTab({ media }: CharactersTabProps) {
                   alt={char.name} 
                   fill 
                   className="object-cover group-hover:scale-105 transition-transform duration-500" 
-                />
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span className="absolute bottom-2 left-2 text-[10px] font-bold text-accent-green bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded border border-accent-green/30 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
                   {char.role}
@@ -42,7 +42,7 @@ export default function CharactersTab({ media }: CharactersTabProps) {
                 {char.voiceActor && (
                   <div className="mt-2 pt-2 border-t border-border/30 flex items-center gap-2">
                     <div className="relative w-6 h-6 rounded-full overflow-hidden bg-void shrink-0">
-                      <Image src={char.voiceActor.image} alt={char.voiceActor.name} fill className="object-cover" />
+                      <Image src={char.voiceActor.image} alt={char.voiceActor.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-text-secondary truncate">{char.voiceActor.name}</p>
@@ -75,7 +75,7 @@ export default function CharactersTab({ media }: CharactersTabProps) {
           {staff.map((s, idx) => (
             <div key={`${s.id}-${idx}`} className="flex items-center gap-3 bg-surface/30 p-2 rounded-xl border border-border/50 hover:bg-surface/50 transition-colors group">
               <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-void shrink-0 border border-white/5">
-                <Image src={s.image} alt={s.name} fill className="object-cover" />
+                <Image src={s.image} alt={s.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-white truncate group-hover:text-accent-green transition-colors">{s.name}</p>

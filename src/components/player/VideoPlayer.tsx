@@ -85,14 +85,29 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
   // Hot swap persistence
   const hotSwapTimeRef = useRef<number | null>(null);
+  const loadedKeyRef = useRef<string | null>(null);
 
   const handleHotSwap = (lang: string, url: string) => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const currentTime = video.currentTime;
+    
+    hotSwapTimeRef.current = currentTime;
     setCurrentLanguage(lang);
     setActiveMenu(null);
-    if (videoRef.current) {
-      hotSwapTimeRef.current = videoRef.current.currentTime;
-    }
+    setIsLoading(true);
     setStreamUrl(url);
+
+    const isHls = url.includes('ext=.m3u8') || (url.includes('.m3u8') && !url.includes('ext=.mp4'));
+    if (!isHls || video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+      video.load();
+      video.currentTime = currentTime;
+      video.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+      setIsLoading(false);
+    }
   };
 
   // Hover Preview States
@@ -135,6 +150,22 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       return;
     }
 
+    const id = mediaType === 'anime' 
+      ? (malId ? `mal-${malId}` : `anilist-${tmdbId}`)
+      : (mediaType === 'movie' ? `tmdb-movie-${tmdbId}` : `tmdb-tv-${tmdbId}`);
+    
+    const currentKey = `${id}:${episode}:${season}`;
+
+    // Skip network request if we already pre-fetched all available streams and are just hot-swapping
+    if (loadedKeyRef.current === currentKey && availableStreams.length > 0) {
+      const match = availableStreams.find(s => s.language === currentLanguage);
+      if (match) {
+        setStreamUrl(match.sourceUrl);
+        setIsLoading(false);
+        return () => { active = false; };
+      }
+    }
+
     setIsLoading(true);
     setAdActive(true);
     setIsDirectStream(true); // Mount direct player container immediately for ad overlay and background buffering
@@ -147,10 +178,6 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     
     const resolveDirectStream = async () => {
       try {
-        const id = mediaType === 'anime' 
-          ? (malId ? `mal-${malId}` : `anilist-${tmdbId}`)
-          : (mediaType === 'movie' ? `tmdb-movie-${tmdbId}` : `tmdb-tv-${tmdbId}`);
-        
         const dubbedParam = currentLanguage !== 'sub' ? '&dubbed=true' : '';
         const langParam = `&lang=${currentLanguage}`;
         const titleParam = mediaTitle ? `&title=${encodeURIComponent(mediaTitle)}` : '';
@@ -163,8 +190,12 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             setDownloadUrl(data.downloadUrl || data.url);
             setSubtitles(data.subtitles || []);
             setIsDirectStream(true);
+            loadedKeyRef.current = currentKey;
             
-            // Backend provides available languages for hardcoded streams
+            // Backend provides available languages and streams
+            if (data.availableStreams && data.availableStreams.length > 0) {
+              setAvailableStreams(data.availableStreams);
+            }
             if (data.availableLanguages && data.availableLanguages.length > 0) {
                setBackendLangs(data.availableLanguages);
                setAvailableLanguages(data.availableLanguages);
@@ -225,6 +256,9 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     const isHls = streamUrl.includes('ext=.m3u8') || (streamUrl.includes('.m3u8') && !streamUrl.includes('ext=.mp4'));
     
     const tryPlay = () => {
+      // Stream is ready to be played (manifest parsed or source set)
+      setPlaybackReady(true);
+      
       // If ad is currently active, don't auto-play yet, let the post-ad useEffect handle it once buffered
       if (adActive) return;
       video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
@@ -314,7 +348,11 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                 if (hlsRetryCountRef.current < HLS_MAX_RETRIES) {
                   hlsRetryCountRef.current++;
                   console.log(`[HLS] Network error, retrying (${hlsRetryCountRef.current}/${HLS_MAX_RETRIES})...`);
-                  hls.startLoad();
+                  if (data.details === 'manifestLoadError') {
+                    hls.loadSource(streamUrl);
+                  } else {
+                    hls.startLoad();
+                  }
                 } else {
                   console.error('[HLS] Network error retries exhausted, giving up.');
                   setIsDirectStream(false);
@@ -587,8 +625,8 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const getLanguageName = (code: string) => {
     if (!code || code === 'und' || code === 'unknown') return 'Original Language';
     if (code === 'sub') return 'Original Language';
-    if (code === 'eng') return 'English (Dub)';
-    if (code === 'hin') return 'Hindi (Dub)';
+    if (code === 'eng' || code === 'eng-dub') return 'English (Dub)';
+    if (code === 'hin' || code === 'hin-dub') return 'Hindi (Dub)';
     try {
       const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
       const name = displayNames.of(code);
@@ -596,6 +634,18 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     } catch {
       return 'Original Language';
     }
+  };
+
+  const getTrackDisplayName = (track: any, index: number) => {
+    if (!track) return 'Audio';
+    if (track.language && track.language !== 'und' && track.language !== 'unknown') {
+      const name = getLanguageName(track.language);
+      if (name !== 'Original Language') return name;
+    }
+    if (track.name && track.name.toLowerCase() !== 'original language' && track.name !== 'und') {
+      return track.name;
+    }
+    return `Track ${index + 1}`;
   };
 
   const handleSubtitleDelayChange = (delta: number) => {
@@ -792,7 +842,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                     <Mic size={14} className="inline mr-1 mb-0.5" />
                     <span className="hidden sm:inline">
                       {audioTracks.length > 1 && currentAudioTrackId > -1 
-                        ? audioTracks.find(t => t.id === currentAudioTrackId)?.name?.slice(0,3) || 'Audio'
+                        ? getTrackDisplayName(audioTracks.find(t => t.id === currentAudioTrackId), currentAudioTrackId).split(' ')[0]
                         : (availableStreams.length > 1 || backendLangs.length > 1 ? getLanguageName(currentLanguage).split(' ')[0] : 'Audio')}
                     </span>
                   </button>
@@ -801,17 +851,21 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                       {audioTracks.length > 1 ? (
                         audioTracks.map((track, index) => (
                           <button key={track.id || index} onClick={() => handleAudioTrackSelect(index)} className={`w-full text-left px-3 py-2 rounded text-xs font-bold transition-colors ${currentAudioTrackId === track.id ? 'bg-accent-green/10 text-accent-green' : 'text-white hover:bg-white/10'}`}>
-                            {track.name || getLanguageName(track.language)}
+                            {getTrackDisplayName(track, index)}
                           </button>
                         ))
                       ) : availableStreams.length > 1 ? (
-                        availableStreams.map((stream) => (
-                          <button key={stream.language} onClick={() => handleHotSwap(stream.language, stream.sourceUrl)} className={`w-full text-left px-3 py-2 rounded text-xs font-bold transition-colors ${currentLanguage === stream.language ? 'bg-accent-green/10 text-accent-green' : 'text-white hover:bg-white/10'}`}>
-                            {getLanguageName(stream.language)}
-                          </button>
-                        ))
+                        Array.from(new Set(availableStreams.map(s => s.language))).map((lang) => {
+                          const stream = availableStreams.find(s => s.language === lang);
+                          if (!stream) return null;
+                          return (
+                            <button key={lang} onClick={() => handleHotSwap(lang, stream.sourceUrl)} className={`w-full text-left px-3 py-2 rounded text-xs font-bold transition-colors ${currentLanguage === lang ? 'bg-accent-green/10 text-accent-green' : 'text-white hover:bg-white/10'}`}>
+                              {getLanguageName(lang)}
+                            </button>
+                          );
+                        })
                       ) : (
-                        backendLangs.map((langOpt) => (
+                        Array.from(new Set(backendLangs)).map((langOpt) => (
                           <button key={langOpt} onClick={() => { setCurrentLanguage(langOpt); setActiveMenu(null); }} className={`w-full text-left px-3 py-2 rounded text-xs font-bold transition-colors ${currentLanguage === langOpt ? 'bg-accent-green/10 text-accent-green' : 'text-white hover:bg-white/10'}`}>
                             {getLanguageName(langOpt)}
                           </button>

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, Calendar, Clock, Film, Tv, Clapperboard, BookOpen, ListVideo, Settings, X } from 'lucide-react';
+import { Home, Search, Calendar, Clock, Film, Tv, Clapperboard, BookOpen, ListVideo, Settings, X, ShieldAlert } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
+import { useUserStore } from '@/store/userStore';
 import { cn } from '@/lib/utils/cn';
 
 const mainLinks = [
@@ -28,6 +29,8 @@ const accountLinks = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const { user } = useUserStore();
+  const isAdmin = user?.role === 'admin';
 
   return (
     <>
@@ -132,6 +135,21 @@ export default function Sidebar() {
               {link.label}
             </Link>
           ))}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all mb-0.5 mt-2',
+                pathname === '/admin'
+                  ? 'bg-surface text-white font-medium text-accent-green'
+                  : 'text-text-secondary hover:bg-surface hover:text-white hover:text-accent-green'
+              )}
+            >
+              <ShieldAlert size={18} className={pathname === '/admin' ? "text-accent-green" : ""} />
+              Admin Panel
+            </Link>
+          )}
         </nav>
 
         {/* Footer */}

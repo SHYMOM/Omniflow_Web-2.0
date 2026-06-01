@@ -32,7 +32,7 @@ export default function ContinueWatching() {
             return (
               <Link key={key} href={`/watch?id=${entry.mediaId}&type=${entry.mediaType}&ep=${entry.episodeNumber}`} className="shrink-0 w-[250px] group">
                 <div className="relative aspect-video rounded-lg overflow-hidden bg-surface mb-2">
-                  {entry.thumbnailUrl && <Image src={entry.thumbnailUrl} alt={safeEpTitle} fill className="object-cover" />}
+                  {entry.thumbnailUrl && <Image src={entry.thumbnailUrl} alt={safeEpTitle} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />}
                   <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/20">
                     <div className="h-full bg-accent-green rounded-r" style={{ width: `${Math.min(entry.progress * 100, 100)}%` }} />
                   </div>

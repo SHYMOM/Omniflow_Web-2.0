@@ -225,7 +225,10 @@ export class AnimeExtractionService {
       for (const server of [StreamingServers.VidCloud, StreamingServers.VidStreaming]) {
         try {
           const sources = await zoro.fetchEpisodeSources(episodeId, server);
-          if (sources.sources?.length > 0) return this.sanitizeSources(sources, 'zoro', 'https://hianime.to/');
+          if (sources.sources?.length > 0) {
+            const inferredLang = langExt === '$dub' ? 'eng-dub' : 'sub';
+            return this.sanitizeSources(sources, 'zoro', 'https://hianime.to/', inferredLang);
+          }
         } catch (err) { }
       }
       throw new Error('Zoro: Exhausted');
@@ -279,7 +282,10 @@ export class AnimeExtractionService {
     for (const server of [StreamingServers.VidStreaming, StreamingServers.GogoCDN, StreamingServers.StreamWish]) {
       try {
         const sources = await gogo.fetchEpisodeSources(targetEp.id, server);
-        return this.sanitizeSources(sources, 'gogoanime', 'https://anitaku.pe/');
+        let inferredLang = 'sub';
+        if (matched.id.includes('-dub')) inferredLang = 'eng-dub';
+        else if (matched.id.includes('-hindi')) inferredLang = 'hin-dub';
+        return this.sanitizeSources(sources, 'gogoanime', 'https://anitaku.pe/', inferredLang);
       } catch (err) { }
     }
     throw new Error('Gogoanime: Exhausted');
@@ -298,12 +304,12 @@ export class AnimeExtractionService {
     const sources = await pahe.fetchEpisodeSources(targetEp.id);
     
     // AnimePahe sources natively contain "eng" or "jpn" in audio tags sometimes, or we just pass it along
-    return this.sanitizeSources(sources, 'animepahe', 'https://animepahe.ru/');
+    return this.sanitizeSources(sources, 'animepahe', 'https://animepahe.ru/', 'sub');
   }
 
   // ─── Utilities ──────────────────────────────────────────────
 
-  private sanitizeSources(rawSources: any, providerName: string, defaultReferer: string): IStreamResult {
+  private sanitizeSources(rawSources: any, providerName: string, defaultReferer: string, inferredLang?: string): IStreamResult {
     const sources: IStreamSource[] = (rawSources.sources || []).map((s: any) => ({
       url: s.url, quality: s.quality || (s.isM3U8 ? 'auto' : 'default'), isM3U8: Boolean(s.isM3U8),
     }));
@@ -312,9 +318,17 @@ export class AnimeExtractionService {
       url: s.url, lang: s.lang?.toLowerCase().substring(0, 2) || 'en', label: s.lang || 'English', default: true
     }));
 
-    return {
+    const result: IStreamResult = {
       success: sources.length > 0, provider: providerName, sources, subtitles,
       headers: { Referer: rawSources.headers?.Referer || defaultReferer },
     };
+    
+    // Pass the inferred language down to the sources array so the Universal Aggregator maps it correctly
+    if (inferredLang) {
+      result.availableLanguages = [inferredLang];
+      result.sources = result.sources.map(s => ({ ...s, language: inferredLang } as any));
+    }
+
+    return result;
   }
 }

@@ -8,8 +8,8 @@ interface UIState {
   setSearchModalOpen: (open: boolean) => void;
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
-  authMode: 'signin' | 'signup';
-  setAuthMode: (mode: 'signin' | 'signup') => void;
+  authMode: 'signin' | 'signup' | 'forgot-password';
+  setAuthMode: (mode: 'signin' | 'signup' | 'forgot-password') => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({

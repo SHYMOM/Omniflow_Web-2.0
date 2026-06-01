@@ -39,7 +39,7 @@ export default function RelatedTab({ media }: RelatedTabProps) {
             return (
               <Link key={`${rel.id}-${idx}`} href={href} className="group">
                 <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-1.5 border border-white/5 group-hover:border-accent-green/40 group-hover:shadow-[0_0_15px_rgba(168,255,53,0.15)] transition-all">
-                  <Image src={rel.posterUrl} alt={rel.title} fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                  <Image src={rel.posterUrl} alt={rel.title} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   <span className="absolute top-1 left-1 bg-void/90 backdrop-blur-sm text-accent-green font-bold text-[8px] px-1.5 py-0.5 rounded border border-accent-green/30 uppercase tracking-widest">{rel.relationType.replace(/_/g, ' ')}</span>
                 </div>
                 <p className="text-[10px] text-text-muted uppercase font-bold tracking-tighter">{rel.formatLabel}</p>

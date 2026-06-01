@@ -173,7 +173,7 @@ export default function SettingsPage() {
                 
                 {/* Live Preview */}
                 <div className="relative w-full aspect-video md:aspect-[21/9] bg-black rounded-xl overflow-hidden mb-6 border border-border flex flex-col p-4">
-                  <Image src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg" alt="Preview Background" fill className="object-cover opacity-40" />
+                  <Image src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg" alt="Preview Background" fill className="object-cover opacity-40" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
                   
                   {/* The actual subtitle preview */}

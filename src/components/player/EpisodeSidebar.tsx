@@ -207,7 +207,7 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
                 {/* Thumbnail image with embedded Ep tag capsule */}
                 <div className="relative w-[110px] aspect-video rounded-md overflow-hidden bg-surface shrink-0 border border-white/5 group-hover:border-accent-green/40 transition-colors">
                   {ep.thumbnail ? (
-                    <Image src={ep.thumbnail} alt={ep.title} fill className="object-cover" />
+                    <Image src={ep.thumbnail} alt={ep.title} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-surface-hover text-[10px] text-text-muted font-bold uppercase">
                       No Preview
@@ -269,7 +269,7 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
             {recommendations.slice(0, 6).map((rec) => (
               <Link key={rec.id} href={`/${rec.type}/${rec.id}`} className="group">
                 <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-surface mb-1.5 border border-border/30 group-hover:border-accent-green/50 transition-all">
-                  <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" />
+                  <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                 </div>
                 <p className="text-[9px] text-text-muted uppercase font-bold tracking-tighter truncate">{rec.formatLabel}</p>
                 <p className="text-[10px] text-white font-bold line-clamp-1 group-hover:text-accent-green transition-colors leading-tight">{rec.title}</p>

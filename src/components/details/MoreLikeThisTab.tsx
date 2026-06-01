@@ -23,7 +23,7 @@ export default function MoreLikeThisTab({ media }: MoreLikeThisTabProps) {
             return (
               <Link key={rec.id} href={href} className="group">
                 <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-1.5 border border-border/30">
-                  <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" />
+                  <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                 </div>
                 <p className="text-[10px] text-text-muted uppercase font-bold tracking-tighter">
                   {rec.formatLabel} {rec.year || ''}

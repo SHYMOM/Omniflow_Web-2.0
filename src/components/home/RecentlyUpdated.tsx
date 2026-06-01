@@ -128,7 +128,7 @@ export default function RecentlyUpdated() {
                       alt={title}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   )}
                   {/* Episode badge */}
                   <div className="absolute bottom-2 right-2 bg-black/90 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-md font-black border border-white/10 shadow-xl">
@@ -140,7 +140,7 @@ export default function RecentlyUpdated() {
                 <div className="flex gap-3 items-start">
                   <Link href={targetHref} className="relative w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 border border-white/5 group-hover:border-accent-green/30 transition-colors">
                     {posterUrl && (
-                      <Image src={posterUrl} alt="" fill className="object-cover" />
+                      <Image src={posterUrl} alt="" fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                     )}
                   </Link>
                   <div className="min-w-0 flex-1">

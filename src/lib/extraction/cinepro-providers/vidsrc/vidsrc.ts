@@ -78,25 +78,29 @@ export class VidSrcProvider extends BaseProvider {
                 return this.emptyResult('Failed to extract m3u8 URLs', media);
             }
 
-            const sources: Source[] = m3u8Urls.map((url) => ({
-                url: this.createProxyUrl(url, {
+            const sources: Source[] = m3u8Urls.map((url) => {
+                const proxyHeaders = {
                     ...this.HEADERS,
                     Referer: 'https://cloudnestra.com/',
                     Origin: 'https://cloudnestra.com'
-                }),
-                type: 'hls',
-                quality: 'Auto',
-                audioTracks: [
-                    {
-                        label: 'English',
-                        language: 'eng'
+                };
+                return {
+                    url: this.createProxyUrl(url, proxyHeaders),
+                    type: 'hls',
+                    quality: 'Auto',
+                    headers: proxyHeaders,
+                    audioTracks: [
+                        {
+                            label: 'English',
+                            language: 'eng'
+                        }
+                    ],
+                    provider: {
+                        id: this.id,
+                        name: this.name
                     }
-                ],
-                provider: {
-                    id: this.id,
-                    name: this.name
-                }
-            }));
+                };
+            });
 
             return {
                 sources,

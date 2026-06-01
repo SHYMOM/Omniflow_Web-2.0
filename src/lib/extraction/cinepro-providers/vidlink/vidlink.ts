@@ -25,7 +25,8 @@ export class VidLinkProvider {
       url: s.file || s.link || s.url,
       quality: s.quality || 'auto',
       type: s.type || 'hls',
-      isM3U8: (s.file || s.link || s.url || '').includes('.m3u8')
+      isM3U8: (s.file || s.link || s.url || '').includes('.m3u8'),
+      provider: { id: 'vidlink', name: 'VidLink' }
     }));
 
     // Some endpoints may return subtitles

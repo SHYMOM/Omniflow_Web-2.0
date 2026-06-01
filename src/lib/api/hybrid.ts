@@ -618,8 +618,9 @@ export async function getHybridRecommendations(id: string, type: string): Promis
     }
   } else if (type === 'movie' || type === 'tv') {
     try {
-      const res = await (await fetch(`/api/tmdb/${type}/${numericId}/recommendations`)).json();
-      return (res.results || []).slice(0, 12).map((item: any) => {
+      const res = await (await fetch(`/api/tmdb/${type}/${numericId}`)).json();
+      const recs = res.recommendations?.results || res.similar?.results || [];
+      return recs.slice(0, 12).map((item: any) => {
         if (type === 'movie') return mapTMDBMovieToMediaItem(item);
         return mapTMDBTVToMediaItem(item);
       });

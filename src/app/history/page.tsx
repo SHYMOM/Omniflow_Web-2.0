@@ -149,7 +149,7 @@ export default function HistoryPage() {
                             className="relative w-[140px] sm:w-[160px] aspect-video rounded-md overflow-hidden bg-void shrink-0 border border-white/5 group-hover:border-accent-green/40 transition-colors"
                           >
                             {entry.thumbnailUrl && (
-                              <Image src={entry.thumbnailUrl} alt={safeMediaTitle} fill className="object-cover" />
+                              <Image src={entry.thumbnailUrl} alt={safeMediaTitle} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                             )}
                             <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">

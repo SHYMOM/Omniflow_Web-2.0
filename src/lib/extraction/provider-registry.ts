@@ -6,6 +6,7 @@ import type { IProviderResult, IProviderHealth } from '@/types/extraction-types'
 import type { MediaType } from '@/types/media';
 import { CircuitBreaker } from './circuit-breaker';
 import { PROVIDER_TIMEOUT_MS } from './extraction-config';
+import { logger } from '../logger';
 
 export interface ProviderEntry<T = unknown> {
   name: string;
@@ -82,6 +83,7 @@ export class ProviderRegistry {
           const errorMsg = err instanceof Error ? err.message : String(err);
           this.circuitBreaker.recordFailure(provider.name);
           console.warn(`[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`);
+          logger.error('ProviderRegistry', `Provider ${provider.name} failed`, err);
           throw new Error(`${provider.name}: ${errorMsg}`);
         }
       })();

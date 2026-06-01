@@ -139,7 +139,7 @@ export default function QuickSearch() {
                       className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-surface-hover transition-colors group text-left"
                     >
                       <div className="relative w-12 h-16 rounded-lg overflow-hidden bg-surface shrink-0 border border-white/5">
-                        {item.posterUrl && <Image src={item.posterUrl} alt="" fill className="object-cover" />}
+                        {item.posterUrl && <Image src={item.posterUrl} alt="" fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">

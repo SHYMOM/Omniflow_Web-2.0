@@ -82,7 +82,7 @@ export default function RecentComments() {
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2">
                   <div className="relative w-6 h-6 rounded-full overflow-hidden bg-surface shrink-0 border border-white/10">
-                    <Image src={c.avatar} alt={c.user} fill className="object-cover" unoptimized />
+                    <Image src={c.avatar} alt={c.user} fill className="object-cover" unoptimized sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   </div>
                   <span className="text-xs font-bold text-white group-hover:text-accent-green transition-colors">{c.user}</span>
                 </div>

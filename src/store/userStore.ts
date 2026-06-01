@@ -1,18 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { WatchHistoryEntry, WatchlistEntry } from '@/types/media';
+import { createClient } from '@/utils/supabase/client';
 
 interface User {
+  id: string;
   username: string;
   avatarUrl?: string;
+  role?: string;
   createdAt: string;
 }
 
 interface UserState {
   user: User | null;
-  signIn: (username: string, password: string) => boolean;
-  signUp: (username: string, password: string) => boolean;
-  signOut: () => void;
+  setUser: (user: User | null) => void;
+  signIn: (identifier: string, password: string) => Promise<{success: boolean; error?: string}>;
+  signUp: (email: string, username: string, password: string) => Promise<{success: boolean; error?: string; message?: string}>;
+  resetPassword: (email: string) => Promise<{success: boolean; error?: string; message?: string}>;
+  signOut: () => Promise<void>;
 
   watchlist: WatchlistEntry[];
   addToWatchlist: (item: WatchlistEntry) => void;
@@ -56,28 +61,106 @@ export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
       user: null,
+      setUser: (user) => set({ user }),
 
-      signIn: (username: string, _password: string) => {
-        // Client-side only auth — passwords stored in localStorage (demo only)
-        const users = JSON.parse(localStorage.getItem('omnistream_users') || '{}');
-        if (users[username]) {
-          set({ user: { username, createdAt: users[username].createdAt } });
-          return true;
+      signIn: async (identifier: string, password: string) => {
+        try {
+          const supabase = createClient();
+          let email = identifier;
+          
+          if (!identifier.includes('@')) {
+            const { data, error } = await supabase.rpc('get_email_by_username', { p_username: identifier });
+            if (error || !data) {
+               return { success: false, error: 'Username not found or invalid credentials.' };
+            }
+            email = data;
+          }
+
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (error) return { success: false, error: error.message };
+          if (!data.user) return { success: false, error: 'Unknown error occurred during sign in.' };
+
+          // Fetch profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+
+          set({
+            user: {
+              id: data.user.id,
+              username: profile?.username || identifier,
+              avatarUrl: profile?.avatar_url,
+              role: profile?.role || 'user',
+              createdAt: profile?.created_at || new Date().toISOString(),
+            }
+          });
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'System error during sign in' };
         }
-        return false;
       },
 
-      signUp: (username: string, _password: string) => {
-        const users = JSON.parse(localStorage.getItem('omnistream_users') || '{}');
-        if (users[username]) return false;
-        const createdAt = new Date().toISOString();
-        users[username] = { createdAt };
-        localStorage.setItem('omnistream_users', JSON.stringify(users));
-        set({ user: { username, createdAt } });
-        return true;
+      signUp: async (email: string, username: string, password: string) => {
+        try {
+          const supabase = createClient();
+          
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                username: username,
+              }
+            }
+          });
+
+          if (error) return { success: false, error: error.message };
+          if (!data.user) return { success: false, error: 'Unknown error occurred during sign up.' };
+
+          if (!data.session) {
+             return { success: true, message: 'Please check your email to verify your account.' };
+          }
+
+          // the trigger in schema handles profile creation, but it might take a sec or we can just set state
+          set({
+            user: {
+              id: data.user.id,
+              username: username,
+              role: 'user', // newly signed up user is standard
+              createdAt: new Date().toISOString(),
+            }
+          });
+          return { success: true };
+        } catch (err: any) {
+           return { success: false, error: err?.message || 'System error during sign up' };
+        }
       },
 
-      signOut: () => set({ user: null }),
+      resetPassword: async (email: string) => {
+        const supabase = createClient();
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`,
+        });
+        if (error) return { success: false, error: error.message };
+        return { success: true, message: 'Password reset link sent to your email.' };
+      },
+
+      signOut: async () => {
+        try {
+          const supabase = createClient();
+          await supabase.auth.signOut();
+        } catch (e) {
+          console.error("SignOut error:", e);
+        } finally {
+          set({ user: null });
+        }
+      },
 
       watchlist: [],
       addToWatchlist: (item) =>

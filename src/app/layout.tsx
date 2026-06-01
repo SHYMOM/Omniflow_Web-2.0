@@ -7,6 +7,7 @@ import Topbar from "@/components/layout/Topbar";
 import Sidebar from "@/components/layout/Sidebar";
 import MobileNav from "@/components/layout/MobileNav";
 import AuthModal from "@/components/auth/AuthModal";
+import AuthProvider from "@/components/auth/AuthProvider";
 import QuickSearch from "@/components/layout/QuickSearch";
 import "./globals.css";
 import ThemeManager from "@/components/layout/ThemeManager";
@@ -30,15 +31,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <link
           href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className={`${inter.variable} font-sans antialiased bg-void text-white`}>
+      <body className={`${inter.variable} font-sans antialiased bg-void text-white`} suppressHydrationWarning>
         <QueryProvider>
+          <AuthProvider />
           <ThemeManager />
           <Suspense>
             <Topbar />
