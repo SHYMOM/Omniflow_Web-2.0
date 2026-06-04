@@ -42,6 +42,36 @@ interface HlsAudioTrack {
   language: string;
 }
 
+// Deduplicate subtitles by URL and ensure unique language codes to prevent React key warnings and HTML5 track activation clashes
+function getUniqueSubtitles(subs: StreamSubtitle[]): StreamSubtitle[] {
+  const uniqueByUrl: StreamSubtitle[] = [];
+  const urlsSeen = new Set<string>();
+  
+  subs.forEach(s => {
+    if (s.url) {
+      if (!urlsSeen.has(s.url)) {
+        urlsSeen.add(s.url);
+        uniqueByUrl.push(s);
+      }
+    } else {
+      uniqueByUrl.push(s);
+    }
+  });
+
+  const langCounts = new Map<string, number>();
+  return uniqueByUrl.map(s => {
+    const baseLang = s.lang || 'sub';
+    let count = langCounts.get(baseLang) || 0;
+    count++;
+    langCounts.set(baseLang, count);
+    
+    return {
+      ...s,
+      lang: count === 1 ? baseLang : `${baseLang}-${count}`
+    };
+  });
+}
+
 export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season, serverId, mediaTitle, imdbId }: VideoPlayerProps) {
   const { 
     setActiveServer, setDownloadUrl, setAvailableLanguages,
@@ -286,7 +316,8 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
           if (data.success && data.url) {
             setStreamUrl(data.url);
             setDownloadUrl(data.downloadUrl || data.url);
-            setSubtitles(data.subtitles || []);
+            const uniqueSubs = data.subtitles ? getUniqueSubtitles(data.subtitles) : [];
+            setSubtitles(uniqueSubs);
             setIsDirectStream(true);
             loadedKeyRef.current = currentKey;
             lastFetchedLanguageRef.current = currentLanguage;
@@ -300,7 +331,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                setAvailableLanguages(data.availableLanguages);
             }
             
-            const defaultSub = data.subtitles?.find((s: any) => s.default);
+            const defaultSub = uniqueSubs.find((s: any) => s.default);
             if (defaultSub) setActiveSubtitle(defaultSub.lang);
           } else {
             // If the stream failed to resolve AND we explicitly requested a dub,
@@ -344,7 +375,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             merged.push({ label: ext.lang, lang: ext.lang, url: ext.url, default: false });
           }
         });
-        return merged;
+        return getUniqueSubtitles(merged);
       });
     }
   }, [externalSubtitles]);
@@ -445,7 +476,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                hlsSubs.forEach((hsub: any) => {
                  if (!newSubs.find(s => s.lang === hsub.lang)) newSubs.push(hsub);
                });
-               return newSubs;
+               return getUniqueSubtitles(newSubs);
              });
              
              const defaultTrack = hls.subtitleTracks.find((t: any) => t.default);
@@ -1125,7 +1156,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                                 url: url,
                                 default: true
                               };
-                              setSubtitles(prev => [...prev, customSub]);
+                              setSubtitles(prev => getUniqueSubtitles([...prev, customSub]));
                               handleSubtitleSelect(customSub.lang);
                            }} />
                         </label>

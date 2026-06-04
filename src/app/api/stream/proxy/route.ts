@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
+import { StealthHttpClient } from '@/lib/extraction/stealth-client';
+
+const stealthClient = new StealthHttpClient();
 
 // Standard CORS headers to allow playback in the browser
 const corsHeaders = {
@@ -24,11 +26,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Prepare headers for the target request
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9',
-    };
+    const headers: Record<string, string> = {};
 
     if (referer) {
       headers['Referer'] = referer;
@@ -52,11 +50,13 @@ export async function GET(request: NextRequest) {
 
     // ─── SUBTITLE PROXY (with SRT to VTT conversion) ──────────
     if (isSubtitle) {
-      const response = await axios.get(targetUrl, {
+      const response = await stealthClient.request({
+        url: targetUrl,
+        method: 'GET',
         headers,
+        referer,
         responseType: 'text',
         timeout: 15000,
-        validateStatus: () => true,
       });
 
       let textData = response.data;
@@ -93,11 +93,13 @@ export async function GET(request: NextRequest) {
 
     // ─── IMAGE PROXY (for manga pages) ────────────────────────
     if (isImage) {
-      const response = await axios.get(targetUrl, {
+      const response = await stealthClient.request({
+        url: targetUrl,
+        method: 'GET',
         headers,
+        referer,
         responseType: 'arraybuffer',
         timeout: 15000,
-        validateStatus: () => true,
       });
 
       // Detect content type from response or URL extension
@@ -125,8 +127,11 @@ export async function GET(request: NextRequest) {
 
     if (isPlaylist) {
       // Fetch playlist as text, rewrite relative and absolute URLs to proxy through this endpoint
-      const response = await axios.get(targetUrl, {
+      const response = await stealthClient.request({
+        url: targetUrl,
+        method: 'GET',
         headers,
+        referer,
         responseType: 'text',
         timeout: 8000,
       });
@@ -194,11 +199,13 @@ export async function GET(request: NextRequest) {
       // We must download the full chunk, detect the PNG wrapper, strip it,
       // and serve only the raw MPEG-TS bytes to hls.js.
 
-      const response = await axios.get(targetUrl, {
+      const response = await stealthClient.request({
+        url: targetUrl,
+        method: 'GET',
         headers,
+        referer,
         responseType: 'arraybuffer',
         timeout: 15000,
-        validateStatus: () => true,
       });
 
       // If the upstream CDN returned an error (404, 403, etc.), forward the error

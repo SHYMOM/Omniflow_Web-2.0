@@ -104,8 +104,8 @@ export default function DownloadModal({
                 className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-accent-green focus:outline-none transition-colors cursor-pointer"
               >
                 <option value={-1}>Auto (Source)</option>
-                {[...hlsLevels].reverse().map(level => (
-                  <option key={level.height} value={level.height}>{level.height}p</option>
+                {[...hlsLevels].reverse().map((level, idx) => (
+                  <option key={`${level.height}-${idx}`} value={level.height}>{level.height}p</option>
                 ))}
               </select>
             </div>
@@ -121,12 +121,12 @@ export default function DownloadModal({
                 className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-accent-green focus:outline-none transition-colors cursor-pointer"
               >
                 {audioTracks.length > 1 ? (
-                  audioTracks.map(t => (
-                    <option key={t.id} value={t.language || t.name || t.id}>{t.language || t.name}</option>
+                  audioTracks.map((t, idx) => (
+                    <option key={`${t.id}-${idx}`} value={t.language || t.name || t.id}>{t.language || t.name}</option>
                   ))
                 ) : (
-                  availableLangs.map(l => (
-                    <option key={l} value={l}>{l.toUpperCase()}</option>
+                  availableLangs.map((l, idx) => (
+                    <option key={`${l}-${idx}`} value={l}>{l.toUpperCase()}</option>
                   ))
                 )}
               </select>
@@ -143,8 +143,8 @@ export default function DownloadModal({
                 className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-accent-green focus:outline-none transition-colors cursor-pointer"
               >
                 <option value="none">None</option>
-                {subtitles.map(s => (
-                  <option key={s.lang} value={s.lang}>{s.label}</option>
+                {subtitles.map((s, idx) => (
+                  <option key={`${s.lang}-${idx}`} value={s.lang}>{s.label}</option>
                 ))}
               </select>
             </div>

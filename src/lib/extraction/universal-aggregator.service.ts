@@ -52,11 +52,40 @@ export interface UniversalAggregationResult {
 }
 
 export class UniversalAggregatorService {
+  private activeAggregations = new Map<string, Promise<UniversalAggregationResult>>();
+
   /**
    * Main orchestrator to fetch aggregated streams.
    * Checks Supabase cache first, and cascades to scraping on a cache miss.
+   * Leverages request coalescing to deduplicate concurrent requests.
    */
   async aggregate(
+    mediaId: string,
+    mediaType: 'anime' | 'movie' | 'tv' | 'kdrama',
+    season = 1,
+    episode = 1,
+    language?: string,
+    imdbId?: string
+  ): Promise<UniversalAggregationResult> {
+    const key = `${mediaType}:${mediaId}:${season}:${episode}:${language || 'sub'}:${imdbId || ''}`;
+    
+    let ongoing = this.activeAggregations.get(key);
+    if (ongoing) {
+      console.log(`[UniversalAggregator] Coalescing concurrent request for key: ${key}`);
+      return ongoing;
+    }
+    
+    const promise = this.performAggregation(mediaId, mediaType, season, episode, language, imdbId);
+    this.activeAggregations.set(key, promise);
+    
+    try {
+      return await promise;
+    } finally {
+      this.activeAggregations.delete(key);
+    }
+  }
+
+  async performAggregation(
     mediaId: string,
     mediaType: 'anime' | 'movie' | 'tv' | 'kdrama',
     season = 1,

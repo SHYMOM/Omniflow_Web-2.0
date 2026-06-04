@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
         if (!finalUrl.includes('/api/stream/proxy')) {
           if (!finalReferer) {
             // 1. Prioritize URL-based checks (most specific)
-            if (finalUrl.includes('boldvisionstrategy.site') || finalUrl.includes('cloudnestra.com') || finalUrl.includes('neonhorizonworkshops.com') || finalUrl.includes('wanderlynest.com') || finalUrl.includes('orchidpixelgardens.com') || finalUrl.includes('vsembed.ru') || finalUrl.includes('ecommerceprofitlab.site')) {
+            if (finalUrl.includes('/pl/') || finalUrl.includes('/content/') || finalUrl.includes('boldvisionstrategy.site') || finalUrl.includes('cloudnestra.com') || finalUrl.includes('neonhorizonworkshops.com') || finalUrl.includes('wanderlynest.com') || finalUrl.includes('orchidpixelgardens.com') || finalUrl.includes('vsembed.ru') || finalUrl.includes('ecommerceprofitlab.site')) {
               finalReferer = 'https://cloudnestra.com/';
             } else if (finalUrl.includes('vidnest')) {
               finalReferer = 'https://vidnest.fun/';
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
               finalReferer = 'https://vibeplayer.site/';
             } else if (finalUrl.includes('vidapi')) {
               finalReferer = 'https://vidapi.movie/';
-            } else if (finalUrl.includes('vidlink') || finalUrl.includes('tmstrd.justhd.tv')) {
+            } else if (finalUrl.includes('/cdnstr/') || finalUrl.includes('/static/') || finalUrl.includes('vidlink') || finalUrl.includes('tmstrd.justhd.tv')) {
               finalReferer = 'https://vidlink.pro/';
             }
 
