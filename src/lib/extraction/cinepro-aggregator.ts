@@ -13,13 +13,13 @@ export class CineproAggregator {
     new VidSrcProvider(),
   ];
 
-  async scrapeMovie(tmdbId: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const media: ProviderMediaObject = { type: 'movie', tmdbId } as any;
+  async scrapeMovie(tmdbId: string, imdbId?: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
+    const media: ProviderMediaObject = { type: 'movie', tmdbId, imdbId } as any;
     return this.scrape(media);
   }
 
-  async scrapeSeries(tmdbId: string, season: number, episode: number): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const media: ProviderMediaObject = { type: 'tv', tmdbId, s: season, e: episode } as any;
+  async scrapeSeries(tmdbId: string, season: number, episode: number, imdbId?: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
+    const media: ProviderMediaObject = { type: 'tv', tmdbId, s: season, e: episode, imdbId } as any;
     return this.scrape(media);
   }
 
@@ -59,34 +59,47 @@ export class CineproAggregator {
       return { sources: mappedSources, subtitles: mappedSubtitles };
     });
 
-    return new Promise((resolve, reject) => {
-      let failures = 0;
+
+    return new Promise((resolve) => {
+      let completions = 0;
       let resolved = false;
+      const total = promises.length;
       
-      if (promises.length === 0) {
+      if (total === 0) {
         return resolve({ sources: [], subtitles: [] });
       }
 
+      const onDone = () => {
+        completions++;
+        if (completions === total && !resolved) {
+          resolved = true;
+          resolve({ sources: [], subtitles: [] });
+        }
+      };
+
       promises.forEach(p => {
         p.then(res => {
-          if (resolved) return;
-          if (res.subtitles && res.subtitles.length > 0) {
+          if (resolved) { onDone(); return; }
+          if (res.sources && res.sources.length > 0 && res.subtitles && res.subtitles.length > 0) {
+            // Best case: has both sources AND subtitles — resolve immediately
             resolved = true;
             resolve(res);
-          } else {
-            // It has no subtitles. Wait 800ms for a better provider before settling.
+            completions++;
+          } else if (res.sources && res.sources.length > 0) {
+            // Has sources but no subtitles. Wait 800ms for a richer provider.
             setTimeout(() => {
               if (!resolved) {
                 resolved = true;
                 resolve(res);
               }
             }, 800);
+            onDone();
+          } else {
+            // Empty result — count as done
+            onDone();
           }
         }).catch(() => {
-          failures++;
-          if (failures === promises.length && !resolved) {
-            resolve({ sources: [], subtitles: [] });
-          }
+          onDone();
         });
       });
     });

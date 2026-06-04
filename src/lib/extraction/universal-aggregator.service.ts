@@ -6,6 +6,30 @@ import { logger } from '../logger';
 
 const stealthClient = new StealthHttpClient();
 
+// Semaphore: cap concurrent Playwright browser launches to avoid OOM.
+// Each Chromium process consumes ~200-400MB RAM; we allow at most 2 at once.
+const PLAYWRIGHT_CONCURRENCY = 2;
+let playwrightActive = 0;
+const playwrightQueue: Array<() => void> = [];
+
+function acquirePlaywrightSlot(): Promise<() => void> {
+  return new Promise((resolve) => {
+    const tryAcquire = () => {
+      if (playwrightActive < PLAYWRIGHT_CONCURRENCY) {
+        playwrightActive++;
+        resolve(() => {
+          playwrightActive--;
+          const next = playwrightQueue.shift();
+          if (next) next();
+        });
+      } else {
+        playwrightQueue.push(tryAcquire);
+      }
+    };
+    tryAcquire();
+  });
+}
+
 export interface UniversalStream {
   language: 'eng-dub' | 'hin-dub' | 'sub';
   video_url: string;
@@ -37,7 +61,8 @@ export class UniversalAggregatorService {
     mediaType: 'anime' | 'movie' | 'tv' | 'kdrama',
     season = 1,
     episode = 1,
-    language?: string
+    language?: string,
+    imdbId?: string
   ): Promise<UniversalAggregationResult> {
     const startTime = Date.now();
     console.log(`[UniversalAggregator] Resolving streams for ${mediaId} (Season ${season}, Episode ${episode})`);
@@ -50,7 +75,7 @@ export class UniversalAggregatorService {
         .eq('media_id', mediaId)
         .eq('season', season)
         .eq('episode', episode)
-        .gt('created_at', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()); // 3 hours TTL
+        .gt('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString()); // 15 mins TTL
 
       if (!streamErr && cachedStreams && cachedStreams.length > 0) {
         console.log(`[UniversalAggregator] Cache HIT for ${mediaId} S${season}E${episode}`);
@@ -65,8 +90,7 @@ export class UniversalAggregatorService {
           .maybeSingle();
 
         const subtitles: UniversalSubtitle[] = cachedSubRow?.subtitles || [];
-
-        const validStreams = cachedStreams.filter(row => !row.video_url.includes('localhost'));
+        const validStreams = cachedStreams;
         
         if (validStreams.length > 0) {
           return {
@@ -88,36 +112,37 @@ export class UniversalAggregatorService {
     console.log(`[UniversalAggregator] Cache MISS. Initiating query expansion and parallel scraping...`);
 
     // 2. Query Expansion Matrix
-    const { queries, primaryTitle, tmdbId } = await expandQuery(mediaId, mediaType, season);
-    console.log(`[UniversalAggregator] Expanded "${primaryTitle}" to ${queries.length} search variations.`);
+    const { queries, primaryTitle, tmdbId, imdbId: resolvedImdbId } = await expandQuery(mediaId, mediaType, season);
+    const finalImdbId = imdbId || resolvedImdbId;
+    console.log(`[UniversalAggregator] Expanded "${primaryTitle}" to ${queries.length} search variations. IMDB: ${finalImdbId}`);
 
-    // 3. Parallel Provider Blast
-    const foundStreams: UniversalStream[] = [];
-    const foundSubtitles: UniversalSubtitle[] = [];
-
-    const scrapeTasks: Promise<any>[] = [];
+    // 3. Parallel Provider Blast Setup
+    const allTasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[] = [];
     const topQueries = queries.slice(0, 2);
 
     // CORE SCRAPERS (Highly reliable, fast, API-based)
     if (mediaType === 'anime') {
-      const { AnimeExtractionService } = await import('./anime-extraction.service');
-      const animeService = new AnimeExtractionService();
-      
-      scrapeTasks.push(
-        animeService.extractSources({
-          mediaId,
-          title: primaryTitle,
-          episode,
-          mediaType: 'anime',
-          language: language || 'sub'
-        }).then(coreAnime => {
+      const coreAnimePromise = (async () => {
+        const streams: UniversalStream[] = [];
+        const subtitles: UniversalSubtitle[] = [];
+        try {
+          const { AnimeExtractionService } = await import('./anime-extraction.service');
+          const animeService = new AnimeExtractionService();
+          
+          const coreAnime = await animeService.extractSources({
+            mediaId,
+            title: primaryTitle,
+            episode,
+            mediaType: 'anime',
+            language: language || 'sub'
+          });
           if (coreAnime.success && coreAnime.sources) {
             coreAnime.sources.forEach((src: any) => {
               const lang = src.language || this.classifyLanguage(`${primaryTitle} ${src.quality}`);
-              let referer = src.referer || src.headers?.Referer || '';
+              let referer = src.referer || coreAnime.headers?.Referer || '';
               if (!referer && coreAnime.provider?.includes('pahe')) referer = 'https://animepahe.com/';
               
-              foundStreams.push({
+              streams.push({
                 language: lang,
                 video_url: src.url,
                 video_type: src.isM3U8 ? 'm3u8' : 'mp4',
@@ -127,26 +152,33 @@ export class UniversalAggregatorService {
             });
             if (coreAnime.subtitles) {
               coreAnime.subtitles.forEach((sub: any) => {
-                foundSubtitles.push({ label: sub.label, url: sub.url, lang: sub.lang });
+                subtitles.push({ label: sub.label, url: sub.url, lang: sub.lang });
               });
             }
           }
-        }).catch(e => console.error('[Core Anime] error:', e))
-      );
+        } catch (e) {
+          console.error('[Core Anime] error:', e);
+        }
+        return { streams, subtitles, provider: 'core-anime' };
+      })();
+      allTasks.push(coreAnimePromise);
     } else {
-      const { CineproAggregator } = await import('./cinepro-aggregator');
-      const cinepro = new CineproAggregator();
-      
       if (tmdbId) {
-        scrapeTasks.push(
-          (mediaType === 'movie' 
-            ? cinepro.scrapeMovie(tmdbId) 
-            : cinepro.scrapeSeries(tmdbId, season, episode)
-          ).then(coreMovie => {
+        const coreMoviePromise = (async () => {
+          const streams: UniversalStream[] = [];
+          const subtitles: UniversalSubtitle[] = [];
+          try {
+            const { CineproAggregator } = await import('./cinepro-aggregator');
+            const cinepro = new CineproAggregator();
+            
+            const coreMovie = await (mediaType === 'movie' 
+              ? cinepro.scrapeMovie(tmdbId, finalImdbId) 
+              : cinepro.scrapeSeries(tmdbId, season, episode, finalImdbId)
+            );
             if (coreMovie.sources && coreMovie.sources.length > 0) {
               coreMovie.sources.forEach(src => {
                 const lang = this.classifyLanguage(`${primaryTitle} ${src.url}`);
-                foundStreams.push({
+                streams.push({
                   language: lang,
                   video_url: src.url,
                   video_type: src.isM3U8 ? 'm3u8' : 'mp4',
@@ -156,64 +188,172 @@ export class UniversalAggregatorService {
               });
               if (coreMovie.subtitles) {
                 coreMovie.subtitles.forEach(sub => {
-                  foundSubtitles.push({ label: sub.label, url: sub.url, lang: sub.lang });
+                  subtitles.push({ label: sub.label, url: sub.url, lang: sub.lang });
                 });
               }
             }
-          }).catch(e => console.error('[Core Movie] error:', e))
-        );
+          } catch (e) {
+            console.error('[Core Movie] error:', e);
+          }
+          return { streams, subtitles, provider: 'cinepro' };
+        })();
+        allTasks.push(coreMoviePromise);
       }
+
+    // EMBED PROVIDER SCRAPER (runs independently via playwright network interception)
+    // Only fires when we have an IMDB ID, which is resolved above.
+    if (finalImdbId && (mediaType === 'movie' || mediaType === 'tv')) {
+      const embedTask = (async () => {
+        const streams: UniversalStream[] = [];
+        const subtitles: UniversalSubtitle[] = [];
+        try {
+          const { EmbedProviderAggregator } = await import('./embed-provider-aggregator');
+          const embedAgg = new EmbedProviderAggregator();
+          const result = mediaType === 'movie'
+            ? await embedAgg.scrapeMovie(finalImdbId)
+            : await embedAgg.scrapeSeries(finalImdbId, season, episode);
+
+          if (result?.sources && result.sources.length > 0) {
+            result.sources.forEach(src => {
+              const lang = this.classifyLanguage(`${primaryTitle} ${src.url}`);
+              streams.push({
+                language: lang,
+                video_url: src.url,
+                video_type: src.isM3U8 ? 'm3u8' : 'mp4',
+                source_name: `embed-${(src.provider as any)?.id || 'embed'}`,
+                referer: src.referer || ''
+              });
+            });
+          }
+          if (result?.subtitles) {
+            result.subtitles.forEach(sub => {
+              subtitles.push({ label: sub.label, url: sub.url, lang: sub.lang });
+            });
+          }
+        } catch (e) {
+          console.error('[EmbedAggregator] error:', e);
+        }
+        return { streams, subtitles, provider: 'embed-providers' };
+      })();
+      allTasks.push(embedTask);
+    }
     }
 
     // PLAYWRIGHT SCRAPERS (Secondary, slower, runs concurrently)
-    const pwTasks: Promise<UniversalStream[]>[] = [];
-    const pwSubTasks: Promise<{streams: UniversalStream[], subtitles: UniversalSubtitle[]}>[] = [];
-
     if (mediaType === 'anime') {
       topQueries.forEach(query => {
-        pwTasks.push(this.scrapeAnimePahe(query, episode), this.scrapeAllWish(query, episode), this.scrapeAnimeKhor(query, episode));
+        allTasks.push(
+          this.scrapeAnimePahe(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'animepahe' })),
+          this.scrapeAllWish(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'allwish' })),
+          this.scrapeAnimeKhor(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'animekhor' }))
+        );
       });
     } else if (mediaType === 'movie' || mediaType === 'tv') {
       topQueries.forEach(query => {
-        pwTasks.push(this.scrapeVegamovies(query, season, episode), this.scrapeKatmovieHD(query, season, episode));
+        allTasks.push(
+          this.scrapeVegamovies(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'vegamovies' })),
+          this.scrapeKatmovieHD(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'katmoviehd' }))
+        );
       });
     } else if (mediaType === 'kdrama') {
       topQueries.forEach(query => {
-        pwSubTasks.push(this.scrapeKissKH(query, episode));
-        pwTasks.push(this.scrapeDramaday(query, season, episode));
+        allTasks.push(
+          this.scrapeKissKH(query, episode).then(res => ({ streams: res.streams, subtitles: res.subtitles, provider: 'kisskh' })),
+          this.scrapeDramaday(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'dramaday' }))
+        );
       });
     }
 
-    scrapeTasks.push(
-      Promise.allSettled(pwTasks).then(results => {
-        results.forEach(res => {
-          if (res.status === 'fulfilled' && res.value) {
-            foundStreams.push(...res.value);
+    // Custom helper for first-win resolver
+    const firstSuccess = (
+      tasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[],
+      timeoutMs: number
+    ): Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[] }[]> => {
+      return new Promise((resolve) => {
+        let resolved = false;
+        let completedCount = 0;
+        const successfulResults: { streams: UniversalStream[], subtitles: UniversalSubtitle[] }[] = [];
+
+        const timer = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve(successfulResults);
           }
+        }, timeoutMs);
+
+        tasks.forEach(p => {
+          p.then(res => {
+            completedCount++;
+            if (res && res.streams && res.streams.length > 0) {
+              successfulResults.push({ streams: res.streams, subtitles: res.subtitles });
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve(successfulResults);
+              }
+            } else if (completedCount === tasks.length) {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve(successfulResults);
+              }
+            }
+          }).catch(() => {
+            completedCount++;
+            if (completedCount === tasks.length) {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve(successfulResults);
+              }
+            }
+          });
         });
-      }),
-      Promise.allSettled(pwSubTasks).then(results => {
-        results.forEach(res => {
-          if (res.status === 'fulfilled' && res.value) {
-            if (res.value.streams) foundStreams.push(...res.value.streams);
-            if (res.value.subtitles) foundSubtitles.push(...res.value.subtitles);
-          }
-        });
-      })
-    );
+      });
+    };
 
-    // 4. Wait for resolution (Max 12 seconds total timeout for all concurrent tasks)
-    await Promise.race([
-      Promise.all(scrapeTasks),
-      new Promise(resolve => setTimeout(resolve, 12000))
-    ]);
+    // 4. Wait for the first success (with a low timeout of 8s)
+    const initialResults = await firstSuccess(allTasks, 8000);
+    
+    // Extract what we found so far to return immediately
+    const foundStreams: UniversalStream[] = [];
+    const foundSubtitles: UniversalSubtitle[] = [];
+    initialResults.forEach(res => {
+      foundStreams.push(...res.streams);
+      foundSubtitles.push(...res.subtitles);
+    });
 
-    if (foundStreams.length === 0) {
-      console.warn('[UniversalAggregator] ALL scrapers returned empty.');
-    }
+    const deduplicatedStreams = this.deduplicateStreams(foundStreams);
+    const deduplicatedSubtitles = this.deduplicateSubtitles(foundSubtitles);
 
+    // Trigger background cache filling and settling of all other tasks
+    Promise.allSettled(allTasks).then(async (results) => {
+      const allStreams: UniversalStream[] = [];
+      const allSubtitles: UniversalSubtitle[] = [];
+      results.forEach(res => {
+        if (res.status === 'fulfilled' && res.value) {
+          allStreams.push(...res.value.streams);
+          allSubtitles.push(...res.value.subtitles);
+        }
+      });
+      await this.saveCache(mediaId, season, episode, allStreams, allSubtitles);
+    }).catch(err => {
+      console.error('[UniversalAggregator] Background tasks error:', err);
+    });
+
+    const duration = Date.now() - startTime;
+    console.log(`[UniversalAggregator] First-win resolved in ${duration}ms. Streams found: ${deduplicatedStreams.length}`);
+
+    return {
+      success: deduplicatedStreams.length > 0,
+      streams: deduplicatedStreams,
+      subtitles: deduplicatedSubtitles
+    };
+  }
+
+  private deduplicateStreams(streams: UniversalStream[]): UniversalStream[] {
     const uniqueStreamsMap = new Map<string, UniversalStream>();
-    foundStreams.forEach(stream => {
+    streams.forEach(stream => {
       if (!stream.video_url) return;
       
       let finalUrl = stream.video_url;
@@ -231,11 +371,8 @@ export class UniversalAggregatorService {
              if (urlParam) finalUrl = decodeURIComponent(urlParam);
           }
         } catch (e) {
-          // Ignore parse errors, just fallback to checking localhost below
+          // Ignore parse errors
         }
-        
-        // Failsafe: if it STILL is localhost after unwrapping, drop it
-        if (finalUrl.includes('localhost')) return;
       }
       
       const key = `${finalUrl.trim()}`;
@@ -249,22 +386,43 @@ export class UniversalAggregatorService {
         });
       }
     });
+    return Array.from(uniqueStreamsMap.values());
+  }
 
-    const deduplicatedStreams = Array.from(uniqueStreamsMap.values());
-
+  private deduplicateSubtitles(subtitles: UniversalSubtitle[]): UniversalSubtitle[] {
     const uniqueSubtitlesMap = new Map<string, UniversalSubtitle>();
-    foundSubtitles.forEach(sub => {
+    subtitles.forEach(sub => {
       if (!sub.url) return;
       uniqueSubtitlesMap.set(sub.url, sub);
     });
-    const deduplicatedSubtitles = Array.from(uniqueSubtitlesMap.values());
+    return Array.from(uniqueSubtitlesMap.values());
+  }
 
-    console.log(`[UniversalAggregator] Deduplicated streams down to ${deduplicatedStreams.length} entries.`);
+  private async saveCache(
+    mediaId: string,
+    season: number,
+    episode: number,
+    streams: UniversalStream[],
+    subtitles: UniversalSubtitle[]
+  ) {
+    const deduplicatedStreams = this.deduplicateStreams(streams);
+    const deduplicatedSubtitles = this.deduplicateSubtitles(subtitles);
 
-    // 5. Save to Cache
     if (deduplicatedStreams.length > 0) {
       try {
-        // Clear previous stale cache
+        // Auto-delete stale cache globally (> 3 hours old)
+        const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+        await supabase
+          .from('cached_streams')
+          .delete()
+          .lte('created_at', threeHoursAgo);
+          
+        await supabase
+          .from('cached_subtitles')
+          .delete()
+          .lte('created_at', threeHoursAgo);
+
+        // Clear previous stale cache for this specific item
         await supabase
           .from('cached_streams')
           .delete()
@@ -307,15 +465,6 @@ export class UniversalAggregatorService {
         console.error('[UniversalAggregator] Failed to write cache to Supabase:', dbSaveErr);
       }
     }
-
-    const duration = Date.now() - startTime;
-    console.log(`[UniversalAggregator] Completed aggregation in ${duration}ms`);
-
-    return {
-      success: deduplicatedStreams.length > 0,
-      streams: deduplicatedStreams,
-      subtitles: deduplicatedSubtitles
-    };
   }
 
   /**
@@ -541,6 +690,8 @@ export class UniversalAggregatorService {
    * Guarantees strict browser.close() in a finally block.
    */
   private async scrapeWithPlaywright(url: string, sourceName: string): Promise<UniversalStream[]> {
+    // Acquire a semaphore slot to cap concurrent Chromium processes at PLAYWRIGHT_CONCURRENCY.
+    const release = await acquirePlaywrightSlot();
     let browser: any = null;
     const streams: UniversalStream[] = [];
     try {
@@ -559,7 +710,6 @@ export class UniversalAggregatorService {
       page.on('response', (response: any) => {
         const reqUrl = response.url();
         if ((reqUrl.includes('.m3u8') || reqUrl.includes('.mp4')) && 
-            !reqUrl.includes('master.m3u8') && 
             !reqUrl.includes('blank.m3u8')) {
           
           const type = reqUrl.includes('.m3u8') ? 'm3u8' : 'mp4';
@@ -593,6 +743,8 @@ export class UniversalAggregatorService {
       if (browser) {
         await browser.close().catch(() => {});
       }
+      // Always release the semaphore slot, even on error
+      release();
     }
     return streams;
   }

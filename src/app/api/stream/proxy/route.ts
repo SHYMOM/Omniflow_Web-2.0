@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
     // Prepare headers for the target request
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
     };
 
     if (referer) {
@@ -159,7 +161,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(rewrittenLines.join('\n'), {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/vnd.apple.mpegurl',
+          'Content-Type': 'text/plain', // IDM BYPASS: Use text/plain instead of application/vnd.apple.mpegurl
           'Cache-Control': 'no-cache, no-store, must-revalidate',
         },
       });
@@ -233,14 +235,14 @@ export async function GET(request: NextRequest) {
           // Strip the PNG wrapper — everything after IEND is real video
           buffer = buffer.slice(offset);
         }
-        contentType = 'video/mp2t';
+        contentType = 'application/octet-stream'; // IDM BYPASS
       } else if (buffer.length > 0 && buffer[0] === 0x47) {
         // Already raw MPEG-TS
-        contentType = 'video/mp2t';
+        contentType = 'application/octet-stream'; // IDM BYPASS
       } else {
         // Unknown format — pass through as-is
         const upstreamCT = String(response.headers['content-type'] || '');
-        contentType = upstreamCT.includes('image/') ? 'video/mp2t' : (upstreamCT || 'application/octet-stream');
+        contentType = upstreamCT.includes('image/') ? 'application/octet-stream' : (upstreamCT || 'application/octet-stream');
       }
 
       return new NextResponse(buffer, {

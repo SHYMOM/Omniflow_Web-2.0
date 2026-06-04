@@ -27,6 +27,13 @@ interface PlayerState {
   setExternalSubtitles: (subs: { lang: string; url: string }[]) => void;
   currentLanguage: string;
   setCurrentLanguage: (lang: string) => void;
+  isDownloadModalOpen: boolean;
+  setIsDownloadModalOpen: (isOpen: boolean) => void;
+  hotSwapToast: string | null;
+  setHotSwapToast: (msg: string | null) => void;
+  failedStreamUrls: Set<string>;
+  addFailedStreamUrl: (url: string) => void;
+  clearFailedStreamUrls: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
@@ -55,4 +62,15 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   setExternalSubtitles: (subs) => set({ externalSubtitles: subs }),
   currentLanguage: 'sub',
   setCurrentLanguage: (lang) => set({ currentLanguage: lang }),
+  isDownloadModalOpen: false,
+  setIsDownloadModalOpen: (isOpen) => set({ isDownloadModalOpen: isOpen }),
+  hotSwapToast: null,
+  setHotSwapToast: (msg) => set({ hotSwapToast: msg }),
+  failedStreamUrls: new Set<string>(),
+  addFailedStreamUrl: (url) => set((state) => {
+    const updated = new Set(state.failedStreamUrls);
+    updated.add(url);
+    return { failedStreamUrls: updated };
+  }),
+  clearFailedStreamUrls: () => set({ failedStreamUrls: new Set<string>() }),
 }));

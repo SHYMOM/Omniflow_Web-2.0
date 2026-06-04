@@ -6,7 +6,7 @@ export async function expandQuery(
   mediaId: string, 
   type: 'anime' | 'movie' | 'tv' | 'kdrama',
   season: number = 1
-): Promise<{ queries: string[], primaryTitle: string, releaseYear?: number, tmdbId?: string }> {
+): Promise<{ queries: string[], primaryTitle: string, releaseYear?: number, tmdbId?: string, imdbId?: string }> {
   // 1. Check database for existing mappings
   const { data: existingMap } = await supabase
     .from('media_identity_mappings')
@@ -19,7 +19,8 @@ export async function expandQuery(
       queries: buildMatrix(existingMap.search_aliases, type, season),
       primaryTitle: existingMap.search_aliases[0],
       releaseYear: existingMap.release_year || undefined,
-      tmdbId: existingMap.tmdb_id || undefined
+      tmdbId: existingMap.tmdb_id || undefined,
+      imdbId: existingMap.imdb_id || undefined
     };
   }
 
@@ -28,6 +29,7 @@ export async function expandQuery(
   let primaryTitle = '';
   let releaseYear: number | undefined;
   let tmdbId = mediaId.includes('tmdb') ? mediaId.replace('tmdb-movie-', '').replace('tmdb-tv-', '') : undefined;
+  let imdbId: string | undefined = mediaId.startsWith('tt') ? mediaId : undefined;
 
   if (type === 'anime') {
     // Fetch from AniList
@@ -63,7 +65,7 @@ export async function expandQuery(
     // Fetch from TMDB
     const endpointType = type === 'movie' ? 'movie' : 'tv';
     try {
-      const res = await fetch(`https://api.themoviedb.org/3/${endpointType}/${tmdbId}?append_to_response=alternative_titles,translations&api_key=${TMDB_API_KEY}`);
+      const res = await fetch(`https://api.themoviedb.org/3/${endpointType}/${tmdbId}?append_to_response=alternative_titles,translations,external_ids&api_key=${TMDB_API_KEY}`);
       const data = await res.json();
       
       if (data.title || data.name) {
@@ -73,6 +75,9 @@ export async function expandQuery(
       if (data.release_date || data.first_air_date) {
         releaseYear = parseInt((data.release_date || data.first_air_date).substring(0, 4));
       }
+      
+      // Extract IMDB ID
+      imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       
       // Alternative titles
       const altTitles = type === 'movie' ? data.alternative_titles?.titles : data.alternative_titles?.results;
@@ -94,7 +99,7 @@ export async function expandQuery(
     primaryTitle = searchAliases[0];
   }
 
-  // 3. Save to Supabase
+  // 3. Save to Supabase (upsert to avoid duplicate row errors on concurrent misses)
   if (primaryTitle) {
     const payload: any = {
       search_aliases: searchAliases,
@@ -103,15 +108,28 @@ export async function expandQuery(
     
     if (mediaId.includes('tmdb')) payload.tmdb_id = mediaId;
     if (mediaId.includes('anilist') || mediaId.includes('mal')) payload.anilist_id = mediaId;
+    if (imdbId) payload.imdb_id = imdbId;
 
-    await supabase.from('media_identity_mappings').insert(payload).select().maybeSingle();
+    // Use upsert to handle concurrent requests for the same media gracefully.
+    // If a row with the same tmdb_id/anilist_id already exists, merge in updated aliases.
+    const conflictCol = mediaId.includes('tmdb')
+      ? 'tmdb_id'
+      : mediaId.includes('anilist') || mediaId.includes('mal')
+      ? 'anilist_id'
+      : 'imdb_id';
+    await supabase
+      .from('media_identity_mappings')
+      .upsert(payload, { onConflict: conflictCol, ignoreDuplicates: false })
+      .select()
+      .maybeSingle();
   }
 
   return {
     queries: buildMatrix(searchAliases, type, season),
     primaryTitle: primaryTitle || mediaId,
     releaseYear,
-    tmdbId
+    tmdbId,
+    imdbId
   };
 }
 

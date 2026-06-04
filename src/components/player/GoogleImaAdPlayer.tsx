@@ -2,10 +2,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { Volume2, VolumeX, ExternalLink } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 interface GoogleImaAdPlayerProps {
   onComplete: () => void;
   isStreamReady?: boolean;
+  mediaId?: string;
+  mediaType?: string;
 }
 
 // High-speed fallback video (Google Chromecast sample - loops endlessly)
@@ -16,6 +19,8 @@ const FALLBACK_CLICK_URL = 'https://github.com/SHYMOM/Omniflow_Web-2.0';
 export default function GoogleImaAdPlayer({
   onComplete,
   isStreamReady = false,
+  mediaId,
+  mediaType,
 }: GoogleImaAdPlayerProps) {
   const adContainerRef = useRef<HTMLDivElement>(null);
   const adVideoRef = useRef<HTMLVideoElement>(null);
@@ -52,9 +57,12 @@ export default function GoogleImaAdPlayer({
     | 'fallback'
     | 'waiting_for_stream'
     | 'error'
+    | 'custom_ad'
   >('loading');
   const [adFinished, setAdFinished] = useState(false);
   const [fallbackMuted, setFallbackMuted] = useState(true); // Start muted → guaranteed autoplay
+  const [customAdData, setCustomAdData] = useState<any>(null);
+  const supabase = createClient();
 
   // FIX 6 – Removed dead `sdkLoaded` useState; the SDK presence is checked
   // directly via (window as any).google?.ima in handleStartPlayback, making
@@ -93,8 +101,54 @@ export default function GoogleImaAdPlayer({
     }
   }, [adFinished, isStreamReady, handleComplete]);
 
-  // ── Step 1: Load the Google IMA SDK script ─────────────────────────────────
+  // ── Step 0: Check for Custom Admin Ads ─────────────────────────────────────
   useEffect(() => {
+    let mounted = true;
+    const fetchCustomAd = async () => {
+      try {
+        const { data: settingsData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'global_ads_enabled')
+          .single();
+          
+        if (settingsData && settingsData.value === 'false') {
+          // If global ads are disabled, skip all ads!
+          if (mounted) {
+             setAdFinished(true);
+             if (isStreamReady) handleComplete();
+             else setAdStatus('waiting_for_stream');
+          }
+          return;
+        }
+
+        if (mediaId) {
+          const { data: adData } = await supabase
+            .from('media_ads')
+            .select('*')
+            .eq('media_id', mediaId)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (adData && mounted) {
+            setCustomAdData(adData);
+            setAdStatus('custom_ad');
+            return;
+          }
+        }
+        
+        // No custom ad, proceed to load Google IMA
+        if (mounted) loadImaSdk();
+      } catch (err) {
+        if (mounted) loadImaSdk();
+      }
+    };
+    fetchCustomAd();
+    
+    return () => { mounted = false; };
+  }, [mediaId, isStreamReady, handleComplete, supabase]);
+
+  const loadImaSdk = () => {
     if ((window as any).google?.ima) {
       setAdStatus('ready');
       return;
@@ -110,13 +164,18 @@ export default function GoogleImaAdPlayer({
           setAdStatus('ready');
           clearInterval(checkInterval);
         } else if ((window as any).__imaFailed || attempts > 20) {
-          console.warn('[IMA] SDK check timed out or blocked. Triggering fallback.');
-          setAdStatus('ready');
+          console.warn('[IMA] SDK check timed out or blocked. Bypassing ads.');
+          setAdFinished(true);
+          if (isStreamReady) {
+            handleComplete();
+          } else {
+            setAdStatus('waiting_for_stream');
+          }
           clearInterval(checkInterval);
         }
         attempts++;
       }, 100);
-      return () => clearInterval(checkInterval);
+      return;
     }
 
     const script = document.createElement('script');
@@ -124,14 +183,17 @@ export default function GoogleImaAdPlayer({
     script.async = true;
     script.onload = () => setAdStatus('ready');
     script.onerror = () => {
-      // SDK blocked by an ad-blocker → surface the status so the next
-      // effect can trigger the fallback immediately via handleStartPlayback.
       (window as any).__imaFailed = true;
-      console.warn('[IMA] SDK blocked. Using unblockable fallback ad.');
-      setAdStatus('ready');
+      console.warn('[IMA] SDK blocked. Bypassing ads.');
+      setAdFinished(true);
+      if (isStreamReady) {
+        handleComplete();
+      } else {
+        setAdStatus('waiting_for_stream');
+      }
     };
     document.head.appendChild(script);
-  }, []);
+  };
 
   // ── Step 2: Auto-trigger playback once SDK resolves ────────────────────────
   useEffect(() => {
@@ -151,7 +213,13 @@ export default function GoogleImaAdPlayer({
     const google = (window as any).google;
 
     if (!google?.ima) {
-      startFallbackAd();
+      console.warn('[IMA] Google SDK not found. Bypassing ads.');
+      setAdFinished(true);
+      if (isStreamReady) {
+        handleComplete();
+      } else {
+        setAdStatus('waiting_for_stream');
+      }
       return;
     }
 
@@ -435,6 +503,56 @@ export default function GoogleImaAdPlayer({
               {fallbackMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
             </button>
 
+            {isStreamReady ? (
+              <button
+                onClick={handleComplete}
+                className="bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white font-semibold text-xs py-2 px-5 rounded-lg flex items-center gap-2 transition-colors animate-pulse"
+              >
+                Skip Ad
+              </button>
+            ) : (
+              <div className="bg-black/70 backdrop-blur-md border border-white/20 text-white/60 font-semibold text-xs py-2 px-5 rounded-lg flex items-center gap-2 select-none">
+                <LoadingSpinner size={12} />
+                <span>Resolving stream...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+          {/* ── 3.5. CUSTOM ADMIN AD ────────────────────────────────────────────── */}
+      {adStatus === 'custom_ad' && customAdData && (
+        <div className="absolute inset-0 w-full h-full z-30 bg-black flex items-center justify-center">
+          <img 
+            src={customAdData.image_url} 
+            alt={customAdData.title}
+            className="w-full h-full object-cover"
+            onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/1280x720?text=Ad')}
+          />
+          
+          {/* Top Info Banner */}
+          <div className="absolute top-4 left-4 z-40 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-accent-green bg-accent-green/20 px-1.5 py-0.5 rounded">
+              Sponsor
+            </span>
+            <span className="text-xs text-white/80 font-medium">
+              {customAdData.title}
+            </span>
+          </div>
+
+          {/* Clickthrough CTA */}
+          <a
+            href={customAdData.target_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-4 left-4 z-40 bg-accent-green hover:bg-accent-green-hover text-black px-4 py-2 rounded-lg font-semibold text-xs flex items-center gap-2 transition-all shadow-[0_4px_12px_rgba(0,230,118,0.3)] hover:translate-y-[-1px]"
+          >
+            Learn More
+            <ExternalLink size={12} />
+          </a>
+
+          {/* Controls: Skip */}
+          <div className="absolute bottom-4 right-4 z-40 flex items-center gap-3">
             {isStreamReady ? (
               <button
                 onClick={handleComplete}

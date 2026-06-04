@@ -22,7 +22,7 @@ redis.on('error', (err) => {
   if (err.message.includes('ECONNREFUSED') || err.message.includes('closed') || err.message.includes('Connection is closed')) {
     // Suppress connection refused/closed warnings
   } else {
-    console.warn('[Redis] Error:', err.message);
+    // Suppress other redis errors in dev to avoid noise
   }
 });
 

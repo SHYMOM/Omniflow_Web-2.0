@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     const season = isNaN(parsedSeason) ? 1 : parsedSeason;
     const isDubbed = searchParams.get('dubbed') === 'true';
     const langParam = searchParams.get('lang') || 'sub';
+    const imdbId = searchParams.get('imdbId') || undefined;
 
     if (!id) {
       return NextResponse.json<StreamApiResponse>(
@@ -71,7 +72,8 @@ export async function GET(request: NextRequest) {
       mediaType as any,
       season,
       episode,
-      langParam
+      langParam,
+      imdbId || undefined
     );
 
     if (aggResult.success && aggResult.streams.length > 0) {
@@ -83,43 +85,45 @@ export async function GET(request: NextRequest) {
         let proxiedUrl = finalUrl;
         if (!finalUrl.includes('/api/stream/proxy')) {
           if (!finalReferer) {
-            const sn = (stream.source_name || '').toLowerCase();
-            if (sn.includes('vidsrc')) {
+            // 1. Prioritize URL-based checks (most specific)
+            if (finalUrl.includes('boldvisionstrategy.site') || finalUrl.includes('cloudnestra.com') || finalUrl.includes('neonhorizonworkshops.com') || finalUrl.includes('wanderlynest.com') || finalUrl.includes('orchidpixelgardens.com') || finalUrl.includes('vsembed.ru') || finalUrl.includes('ecommerceprofitlab.site')) {
               finalReferer = 'https://cloudnestra.com/';
-            } else if (sn.includes('vidnest')) {
+            } else if (finalUrl.includes('vidnest')) {
               finalReferer = 'https://vidnest.fun/';
-            } else if (sn.includes('vidapi')) {
-              finalReferer = 'https://vidapi.movie/';
-            } else if (sn.includes('vidlink')) {
-              finalReferer = 'https://vidlink.pro/';
-            } else if (sn.includes('animepahe')) {
+            } else if (finalUrl.includes('animepahe')) {
               finalReferer = 'https://animepahe.com/';
-            } else if (sn.includes('allwish')) {
+            } else if (finalUrl.includes('allwish')) {
               finalReferer = 'https://allwish.me/';
-            } else if (sn.includes('gogoanime')) {
-              finalReferer = 'https://gogoanime.cl/';
+            } else if (finalUrl.includes('gogoanime') || finalUrl.includes('empoweredfreelancerhub.site') || finalUrl.includes('vibeplayer')) {
+              finalReferer = 'https://vibeplayer.site/';
+            } else if (finalUrl.includes('vidapi')) {
+              finalReferer = 'https://vidapi.movie/';
+            } else if (finalUrl.includes('vidlink') || finalUrl.includes('tmstrd.justhd.tv')) {
+              finalReferer = 'https://vidlink.pro/';
             }
-            // Fallback to URL-based checks if source_name didn't match
+
+            // 2. Fallback to source_name-based checks if URL pattern didn't match
             if (!finalReferer) {
-              if (finalUrl.includes('boldvisionstrategy.site') || finalUrl.includes('cloudnestra.com') || finalUrl.includes('neonhorizonworkshops.com') || finalUrl.includes('wanderlynest.com') || finalUrl.includes('orchidpixelgardens.com') || finalUrl.includes('vsembed.ru') || finalUrl.includes('ecommerceprofitlab.site')) {
+              const sn = (stream.source_name || '').toLowerCase();
+              if (sn.includes('vidsrc')) {
                 finalReferer = 'https://cloudnestra.com/';
-              } else if (finalUrl.includes('vidnest')) {
+              } else if (sn.includes('vidnest')) {
                 finalReferer = 'https://vidnest.fun/';
-              } else if (finalUrl.includes('animepahe')) {
-                finalReferer = 'https://animepahe.com/';
-              } else if (finalUrl.includes('allwish')) {
-                finalReferer = 'https://allwish.me/';
-              } else if (finalUrl.includes('gogoanime')) {
-                finalReferer = 'https://gogoanime.cl/';
-              } else if (finalUrl.includes('vidapi')) {
+              } else if (sn.includes('vidapi')) {
                 finalReferer = 'https://vidapi.movie/';
-              } else if (finalUrl.includes('vidlink') || finalUrl.includes('tmstrd.justhd.tv')) {
+              } else if (sn.includes('vidlink')) {
                 finalReferer = 'https://vidlink.pro/';
+              } else if (sn.includes('animepahe')) {
+                finalReferer = 'https://animepahe.com/';
+              } else if (sn.includes('allwish')) {
+                finalReferer = 'https://allwish.me/';
+              } else if (sn.includes('gogoanime')) {
+                finalReferer = 'https://gogoanime.cl/';
               }
             }
           }
 
-          const extension = stream.video_type === 'm3u8' ? '&ext=.m3u8' : '&ext=.mp4';
+          const extension = stream.video_type === 'm3u8' ? '&format=m3u8' : '&format=mp4';
           proxiedUrl = `${request.nextUrl.origin}/api/stream/proxy?url=${encodeURIComponent(finalUrl)}&referer=${encodeURIComponent(finalReferer)}${extension}`;
         }
 
@@ -193,31 +197,54 @@ export async function GET(request: NextRequest) {
       .replace('anilist-', '')
       .replace('mal-', '');
 
+    const embedId = imdbId || (cleanId.startsWith('tt') ? cleanId : undefined);
+
     let iframeUrl = '';
     const fallbackIframes: { name: string, url: string }[] = [];
 
     if (mediaType === 'movie') {
-      iframeUrl = `https://vidsrc.net/embed/movie?tmdb=${cleanId}`;
-      fallbackIframes.push(
-        { name: 'VidSrc.to', url: `https://vidsrc.to/embed/movie/${cleanId}` },
-        { name: 'VidSrc.me', url: `https://vidsrc.me/embed/movie/${cleanId}` },
-        { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/movie/${cleanId}` },
-        { name: 'Embed.su', url: `https://embed.su/embed/movie/${cleanId}` }
-      );
+      iframeUrl = embedId 
+        ? `https://vidsrc.cc/v2/embed/movie/${embedId}` 
+        : `https://vidsrc.to/embed/movie/${cleanId}`;
+        
+      if (embedId) {
+        fallbackIframes.push(
+          { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/movie/${embedId}` },
+          { name: 'Embed.su', url: `https://embed.su/embed/movie/${embedId}` },
+          { name: 'MultiEmbed.mov', url: `https://multiembed.mov/?video_id=${embedId}&tmdb=1` },
+          { name: '2Embed.cc', url: `https://2embed.cc/embed/${embedId}` },
+          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/movie/${cleanId}` }
+        );
+      } else {
+        fallbackIframes.push(
+          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/movie/${cleanId}` },
+          { name: 'VidSrc.me', url: `https://vidsrc.me/embed/movie/${cleanId}` }
+        );
+      }
     } else if (mediaType === 'tv') {
-      iframeUrl = `https://vidsrc.net/embed/tv?tmdb=${cleanId}&season=${season}&episode=${episode}`;
-      fallbackIframes.push(
-        { name: 'VidSrc.to', url: `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}` },
-        { name: 'VidSrc.me', url: `https://vidsrc.me/embed/tv/${cleanId}/${season}/${episode}` },
-        { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/tv/${cleanId}/${season}/${episode}` },
-        { name: 'Embed.su', url: `https://embed.su/embed/tv/${cleanId}/${season}/${episode}` }
-      );
+      iframeUrl = embedId
+        ? `https://vidsrc.cc/v2/embed/tv/${embedId}/${season}/${episode}`
+        : `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}`;
+        
+      if (embedId) {
+        fallbackIframes.push(
+          { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/tv/${embedId}/${season}/${episode}` },
+          { name: 'Embed.su', url: `https://embed.su/embed/tv/${embedId}/${season}/${episode}` },
+          { name: 'MultiEmbed.mov', url: `https://multiembed.mov/?video_id=${embedId}&tmdb=1&s=${season}&e=${episode}` },
+          { name: '2Embed.cc', url: `https://2embed.cc/embedtv/${embedId}&s=${season}&e=${episode}` },
+          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}` }
+        );
+      } else {
+        fallbackIframes.push(
+          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}` },
+          { name: 'VidSrc.me', url: `https://vidsrc.me/embed/tv/${cleanId}/${season}/${episode}` }
+        );
+      }
     } else if (mediaType === 'anime') {
-      iframeUrl = `https://vidsrc.net/embed/anime?tmdb=${cleanId}&ep=${episode}`;
+      iframeUrl = `https://vidsrc.to/embed/anime/${cleanId}/${episode}`;
       fallbackIframes.push(
         { name: 'VidSrc.to', url: `https://vidsrc.to/embed/anime/${cleanId}/${episode}` },
-        { name: 'VidSrc.me', url: `https://vidsrc.me/embed/anime/${cleanId}/${episode}` },
-        { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/anime/${cleanId}/${episode}` }
+        { name: 'VidSrc.me', url: `https://vidsrc.me/embed/anime/${cleanId}/${episode}` }
       );
     }
 

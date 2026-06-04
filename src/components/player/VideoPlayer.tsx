@@ -11,6 +11,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUserStore } from '@/store/userStore';
 import GoogleImaAdPlayer from './GoogleImaAdPlayer';
+import DownloadModal from './DownloadModal';
 
 interface VideoPlayerProps {
   malId: number;
@@ -20,6 +21,7 @@ interface VideoPlayerProps {
   season: number;
   serverId: string;
   mediaTitle?: string;
+  imdbId?: string;
 }
 
 interface StreamSubtitle {
@@ -40,12 +42,15 @@ interface HlsAudioTrack {
   language: string;
 }
 
-export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season, serverId, mediaTitle }: VideoPlayerProps) {
+export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season, serverId, mediaTitle, imdbId }: VideoPlayerProps) {
   const { 
     setActiveServer, setDownloadUrl, setAvailableLanguages,
     availableStreams, setAvailableStreams,
     externalSubtitles, setExternalSubtitles,
-    currentLanguage, setCurrentLanguage
+    currentLanguage, setCurrentLanguage, downloadUrl,
+    isDownloadModalOpen, setIsDownloadModalOpen,
+    hotSwapToast, setHotSwapToast,
+    failedStreamUrls, addFailedStreamUrl, clearFailedStreamUrls
   } = usePlayerStore();
   const { subtitleSettings, settings } = useUserStore();
   const [servers, setServers] = useState<Server[]>([]);
@@ -53,6 +58,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   
   // Custom Player states
   const [isLoading, setIsLoading] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [isDirectStream, setIsDirectStream] = useState(false);
   const [playbackReady, setPlaybackReady] = useState(false);
@@ -82,33 +88,83 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   // Using currentLanguage from store instead of local state
   
   const [subtitleDelay, setSubtitleDelay] = useState(0);
+  const [loadingText, setLoadingText] = useState('Aggregating stream links...');
 
   // Hot swap persistence
   const hotSwapTimeRef = useRef<number | null>(null);
+  const hotSwapRateRef = useRef<number>(1);
+  const hotSwapVolumeRef = useRef<number>(1);
   const loadedKeyRef = useRef<string | null>(null);
+  const hotSwapToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isNativeSwitchRef = useRef<boolean>(false);
 
-  const handleHotSwap = (lang: string, url: string) => {
+  /**
+   * Hot-Swap Audio Engine — seamlessly switch between different external
+   * video URLs at the exact same timestamp without the user losing their place.
+   *
+   * 1. Save exact currentTime, playbackRate, and volume
+   * 2. Show a toast notification ("Switching to Hindi...")
+   * 3. Destroy current hls instance
+   * 4. Set new stream URL (triggers hls re-init via useEffect)
+   * 5. On MANIFEST_PARSED, seek to saved currentTime and restore settings
+   */
+  const handleHotSwap = useCallback((lang: string, url: string) => {
     if (!videoRef.current) return;
     const video = videoRef.current;
-    const currentTime = video.currentTime;
-    
-    hotSwapTimeRef.current = currentTime;
+
+    // 1. Save playback state
+    hotSwapTimeRef.current = video.currentTime;
+    hotSwapRateRef.current = video.playbackRate || 1;
+    hotSwapVolumeRef.current = video.volume;
+
+    // 2. Show toast
+    const langName = getLanguageName(lang);
+    setHotSwapToast(`Switching to ${langName}...`);
+    if (hotSwapToastTimerRef.current) clearTimeout(hotSwapToastTimerRef.current);
+    hotSwapToastTimerRef.current = setTimeout(() => setHotSwapToast(null), 4000);
+
+    // 3. Destroy current hls
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    // 4. Update state — the streamUrl useEffect will re-initialize hls
     setCurrentLanguage(lang);
     setActiveMenu(null);
     setIsLoading(true);
     setStreamUrl(url);
+  }, [setCurrentLanguage, setHotSwapToast]);
 
-    const isHls = url.includes('ext=.m3u8') || (url.includes('.m3u8') && !url.includes('ext=.mp4'));
-    if (!isHls || video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
-      video.load();
-      video.currentTime = currentTime;
-      video.play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-      setIsLoading(false);
+  /**
+   * Auto-Fallback Engine — if the current stream fatally fails,
+   * automatically switch to the next available language stream.
+   */
+  const attemptAutoFallback = useCallback(() => {
+    const state = usePlayerStore.getState();
+    const streams = state.availableStreams;
+    const failedUrls = state.failedStreamUrls;
+
+    if (streams.length <= 1) return false;
+
+    const currentUrl = streamUrl;
+    const fallbackStream = streams.find(
+      s => s.sourceUrl !== currentUrl && !failedUrls.has(s.sourceUrl)
+    );
+
+    if (fallbackStream) {
+      const currentLangName = getLanguageName(state.currentLanguage);
+      const fallbackLangName = getLanguageName(fallbackStream.language);
+      state.setHotSwapToast(`${currentLangName} stream failed — switching to ${fallbackLangName}...`);
+
+      if (currentUrl) state.addFailedStreamUrl(currentUrl);
+
+      handleHotSwap(fallbackStream.language, fallbackStream.sourceUrl);
+      return true;
     }
-  };
+
+    return false;
+  }, [streamUrl, handleHotSwap]);
 
   // Hover Preview States
   const [isHoveringSeek, setIsHoveringSeek] = useState(false);
@@ -121,24 +177,53 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const hlsRef = useRef<any>(null);
   const hlsRetryCountRef = useRef<number>(0);
   const HLS_MAX_RETRIES = 3;
+  // Tracks the language that was last successfully fetched — prevents language-fallback
+  // from triggering a re-fetch loop when setCurrentLanguage('sub') is called on failure.
+  const lastFetchedLanguageRef = useRef<string>('sub');
 
   // 1. Fetch server configs for iframe fallback
   useEffect(() => {
     fetch('/servers.json').then(r => r.json()).then(setServers).catch(() => {});
   }, []);
 
+  const [resolvedTmdbId, setResolvedTmdbId] = useState<number | null>(tmdbId);
+
+  // 1b. Fetch real TMDB ID for Anime (since frontend only has MAL/Anilist ID)
+  useEffect(() => {
+    if (mediaType === 'anime' && malId) {
+      fetch(`https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=${malId}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.themoviedb) {
+            setResolvedTmdbId(Number(data.themoviedb));
+          }
+        })
+        .catch(console.error);
+    } else {
+      setResolvedTmdbId(tmdbId);
+    }
+  }, [mediaType, malId, tmdbId]);
+
   // 2. Build the standard fallback embed url
   useEffect(() => {
+    // Standard logic for Movies/TV/Anime
     const server = servers.find(s => s.id === serverId) || servers[0];
     if (!server) return;
     const type = mediaType === 'anime' ? 'anime_sub' : mediaType === 'movie' ? 'movie' : 'tv';
-    const url = buildEmbedUrl(server, { type, malId, tmdbId, episode, season });
+    const url = buildEmbedUrl(server, { type, malId, tmdbId: resolvedTmdbId || undefined, episode, season });
     setEmbedUrl(url);
-  }, [servers, serverId, malId, tmdbId, mediaType, episode, season]);
+  }, [servers, serverId, malId, resolvedTmdbId, mediaType, episode, season]);
 
   // 3. Resolve Direct HLS Stream via Backend Aggregator
   useEffect(() => {
+    if (isNativeSwitchRef.current) {
+      isNativeSwitchRef.current = false;
+      return;
+    }
+
     let active = true;
+    let t1: NodeJS.Timeout;
+    let t2: NodeJS.Timeout;
     
     if (serverId !== 'omniflow_direct') {
       setIsDirectStream(false);
@@ -174,16 +259,29 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     setDownloadUrl(null);
     setSubtitles([]);
     setHlsLevels([]);
+    clearFailedStreamUrls(); // Reset failed streams for new media
     setAudioTracks([]);
+    setLoadingText('Initializing scraper...');
     
     const resolveDirectStream = async () => {
       try {
+        t1 = setTimeout(() => {
+          if (active) setLoadingText('Trying 5 sources...');
+        }, 1500);
+        t2 = setTimeout(() => {
+          if (active) setLoadingText('Extracting HLS streams...');
+        }, 4000);
+
         const dubbedParam = currentLanguage !== 'sub' ? '&dubbed=true' : '';
         const langParam = `&lang=${currentLanguage}`;
         const titleParam = mediaTitle ? `&title=${encodeURIComponent(mediaTitle)}` : '';
-        const res = await fetch(`/api/stream?type=${mediaType}&id=${id}&episode=${episode}&season=${season}${dubbedParam}${langParam}${titleParam}`);
+        const imdbParam = imdbId ? `&imdbId=${imdbId}` : '';
+        const res = await fetch(`/api/stream?type=${mediaType}&id=${id}&episode=${episode}&season=${season}${dubbedParam}${langParam}${titleParam}${imdbParam}`);
         const data = await res.json();
         
+        clearTimeout(t1);
+        clearTimeout(t2);
+
         if (active) {
           if (data.success && data.url) {
             setStreamUrl(data.url);
@@ -191,6 +289,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             setSubtitles(data.subtitles || []);
             setIsDirectStream(true);
             loadedKeyRef.current = currentKey;
+            lastFetchedLanguageRef.current = currentLanguage;
             
             // Backend provides available languages and streams
             if (data.availableStreams && data.availableStreams.length > 0) {
@@ -204,9 +303,11 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             const defaultSub = data.subtitles?.find((s: any) => s.default);
             if (defaultSub) setActiveSubtitle(defaultSub.lang);
           } else {
-            // If the stream failed to resolve AND we explicitly requested a dub, switch back to sub
-            if (currentLanguage !== 'sub') {
-              console.warn(`${currentLanguage === 'hin' ? 'Hindi' : 'English'} dub not found! Switching back to original...`);
+            // If the stream failed to resolve AND we explicitly requested a dub,
+            // switch back to sub — but only if we haven't already fetched sub for this key.
+            if (currentLanguage !== 'sub' && lastFetchedLanguageRef.current !== 'sub') {
+              console.warn(`${currentLanguage === 'hin-dub' ? 'Hindi' : 'English'} dub not found! Switching back to original...`);
+              lastFetchedLanguageRef.current = 'sub';
               setCurrentLanguage('sub');
               return; // The language state change will trigger a re-fetch
             } else {
@@ -216,6 +317,8 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
           setIsLoading(false);
         }
       } catch (err) {
+        clearTimeout(t1);
+        clearTimeout(t2);
         if (active) {
           setIsDirectStream(false);
           setIsLoading(false);
@@ -224,8 +327,12 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     };
 
     resolveDirectStream();
-    return () => { active = false; };
-  }, [mediaType, malId, tmdbId, episode, season, serverId, currentLanguage, mediaTitle, setDownloadUrl, setAvailableLanguages]);
+    return () => {
+      active = false;
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [mediaType, malId, tmdbId, episode, season, serverId, currentLanguage, mediaTitle]);
 
   // Merge external subtitles into unified subtitles menu
   useEffect(() => {
@@ -253,7 +360,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       hlsRef.current = null;
     }
 
-    const isHls = streamUrl.includes('ext=.m3u8') || (streamUrl.includes('.m3u8') && !streamUrl.includes('ext=.mp4'));
+    const isHls = streamUrl.includes('format=m3u8') || (streamUrl.includes('.m3u8') && !streamUrl.includes('format=mp4'));
     
     const tryPlay = () => {
       // Stream is ready to be played (manifest parsed or source set)
@@ -303,10 +410,19 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
          hls.on(Hls.Events.MANIFEST_PARSED, (event: any, data: any) => {
           setHlsLevels(data.levels);
+          // Hot-swap restoration: seek to saved timestamp and restore playback settings
           if (hotSwapTimeRef.current !== null && video) {
             video.currentTime = hotSwapTimeRef.current;
             hotSwapTimeRef.current = null;
           }
+          if (hotSwapRateRef.current !== 1 && video) {
+            video.playbackRate = hotSwapRateRef.current;
+          }
+          if (hotSwapVolumeRef.current !== undefined && video) {
+            video.volume = hotSwapVolumeRef.current;
+          }
+          // Dismiss toast on successful playback
+          setHotSwapToast(null);
           tryPlay();
           
           // Native multi-audio tracks extraction
@@ -343,6 +459,17 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         hls.on(Hls.Events.ERROR, (event: any, data: any) => {
           if (data.fatal) {
             console.warn(`[HLS] Fatal error type=${data.type} details=${data.details} retry=${hlsRetryCountRef.current}/${HLS_MAX_RETRIES}`);
+            
+            // INSTANT FALLBACK for Proxy/Cloudflare blocks (403, 500)
+            const statusCode = data.response?.code;
+            if (statusCode === 403 || statusCode === 500 || data.details === 'manifestLoadError') {
+                console.error(`[HLS] Instant fallback triggered due to ${statusCode || data.details}`);
+                if (!attemptAutoFallback()) {
+                  setIsDirectStream(false);
+                }
+                return;
+            }
+            
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 if (hlsRetryCountRef.current < HLS_MAX_RETRIES) {
@@ -354,8 +481,12 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                     hls.startLoad();
                   }
                 } else {
-                  console.error('[HLS] Network error retries exhausted, giving up.');
-                  setIsDirectStream(false);
+                  console.error('[HLS] Network error retries exhausted.');
+                  // AUTO-FALLBACK: Try the next available stream
+                  if (!attemptAutoFallback()) {
+                    console.error('[HLS] No fallback streams available, falling back to embed.');
+                    setIsDirectStream(false);
+                  }
                 }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
@@ -364,13 +495,19 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                   console.log(`[HLS] Media error, recovering (${hlsRetryCountRef.current}/${HLS_MAX_RETRIES})...`);
                   hls.recoverMediaError();
                 } else {
-                  console.error('[HLS] Media error retries exhausted, giving up.');
-                  setIsDirectStream(false);
+                  console.error('[HLS] Media error retries exhausted.');
+                  // AUTO-FALLBACK: Try the next available stream
+                  if (!attemptAutoFallback()) {
+                    console.error('[HLS] No fallback streams available, falling back to embed.');
+                    setIsDirectStream(false);
+                  }
                 }
                 break;
               default:
-                console.error('[HLS] Unrecoverable error, giving up.');
-                setIsDirectStream(false);
+                console.error('[HLS] Unrecoverable error.');
+                if (!attemptAutoFallback()) {
+                  setIsDirectStream(false);
+                }
                 break;
             }
           }
@@ -571,6 +708,19 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     hlsRef.current.audioTrack = index;
     const trackId = hlsRef.current.audioTracks[index]?.id ?? index;
     setCurrentAudioTrackId(trackId);
+
+    const track = hlsRef.current.audioTracks[index];
+    if (track) {
+      const trackLang = track.language || track.name || '';
+      const normLang = trackLang.toLowerCase();
+      let newLang = 'sub';
+      if (normLang.includes('hin') || normLang.includes('hindi')) newLang = 'hin-dub';
+      else if (normLang.includes('eng') || normLang.includes('english')) newLang = 'eng-dub';
+      
+      isNativeSwitchRef.current = true;
+      setCurrentLanguage(newLang);
+    }
+
     setActiveMenu(null);
   };
 
@@ -669,20 +819,33 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     }
   };
 
-  // Only use early returns if we are NOT using the direct stream player
-  if (!isDirectStream) {
-    if (isLoading) {
+  // ─── RENDER PLAYER CONTENT ──────────────────────────────
+  const renderPlayerContent = () => {
+    if (!isDirectStream) {
+      if (isLoading) {
+        return (
+          <div className="relative w-full h-full bg-void flex flex-col items-center justify-center">
+            <LoadingSpinner size={48} />
+            <p className="text-xs text-text-muted mt-4 font-medium uppercase tracking-widest animate-pulse">{loadingText}</p>
+          </div>
+        );
+      }
       return (
-        <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-void flex flex-col items-center justify-center border border-border">
-          <LoadingSpinner size={48} />
-          <p className="text-xs text-text-muted mt-4 font-medium uppercase tracking-widest animate-pulse">Aggregating stream links...</p>
+        <div className="relative w-full h-full">
+          {embedUrl ? (
+            <iframe 
+              src={embedUrl} 
+              allowFullScreen 
+              className="w-full h-full border-0" 
+              title="Video Player" 
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-void text-center"><AlertCircle size={32} className="text-text-muted" /></div>
+          )}
         </div>
       );
     }
-  }
- 
-  // ─── DIRECT NATIVE HTML5 HLS VIDEO PLAYER ──────────────────────────────
-  if (isDirectStream) {
+
     return (
       <div className="flex flex-col w-full h-full group/player relative font-sans">
         <div 
@@ -721,8 +884,10 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             onLoadedMetadata={handleLoadedMetadata}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
-            onCanPlay={() => setPlaybackReady(true)}
-            onCanPlayThrough={() => setPlaybackReady(true)}
+            onWaiting={() => setIsBuffering(true)}
+            onPlaying={() => setIsBuffering(false)}
+            onCanPlay={() => { setPlaybackReady(true); setIsBuffering(false); }}
+            onCanPlayThrough={() => { setPlaybackReady(true); setIsBuffering(false); }}
             onError={(e) => {
               const video = videoRef.current;
               // Ignore empty source/mount errors
@@ -749,16 +914,42 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             ))}
           </video>
  
-          {adActive && (
-            <div className="absolute inset-0 z-50">
-              <GoogleImaAdPlayer onComplete={() => setAdActive(false)} isStreamReady={playbackReady} />
+          {/* Loading Indicator */}
+          {isLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm z-30">
+              <LoadingSpinner size={48} />
+              <span className="text-xs text-white mt-4 font-bold uppercase tracking-widest animate-pulse">
+                {loadingText}
+              </span>
+              <span className="text-[10px] text-text-muted mt-2 font-mono uppercase tracking-widest">
+                Searching multiple premium sources
+              </span>
             </div>
           )}
- 
+
+          {/* Buffering Indicator */}
+          {isBuffering && !adActive && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 z-10 pointer-events-none">
+              <LoadingSpinner size={48} />
+              <span className="text-xs text-text-muted mt-4 font-semibold uppercase tracking-widest animate-pulse">
+                Buffering stream...
+              </span>
+            </div>
+          )}
           {!isPlaying && !isLoading && !adActive && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity pointer-events-none z-10">
               <div className="w-20 h-20 rounded-full bg-accent-green/20 backdrop-blur-md border border-accent-green/50 flex items-center justify-center text-accent-green scale-100 hover:scale-105 transition-all duration-300 shadow-[0_0_30px_rgba(0,230,118,0.3)]">
                 <Play size={36} className="fill-accent-green ml-2" />
+              </div>
+            </div>
+          )}
+
+          {/* Hot-Swap Language Toast */}
+          {hotSwapToast && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2 px-4 py-2 bg-black/80 backdrop-blur-xl border border-accent-green/30 rounded-full shadow-[0_0_20px_rgba(0,230,118,0.15)]">
+                <RotateCcw size={14} className="text-accent-green animate-spin" />
+                <span className="text-xs font-bold text-white tracking-wide">{hotSwapToast}</span>
               </div>
             </div>
           )}
@@ -981,44 +1172,54 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                   )}
                 </div>
 
+                {/* Download Button */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDownloadModalOpen(true);
+                  }}
+                  className="hover:text-accent-green transition-colors cursor-pointer p-1.5 text-white" 
+                  title="Download Stream"
+                >
+                  <Download size={20} />
+                </button>
+
                 <button onClick={toggleFullscreen} className="text-white hover:text-accent-green transition-colors cursor-pointer p-1.5 ml-2" title="Fullscreen">
                   {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    );
-  }
 
-  if (serverId === 'omniflow_direct' && !isDirectStream && !isLoading) {
-    return (
-      <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-void border border-border flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-12 h-12 rounded-full bg-accent-green/10 border border-accent-green/30 flex items-center justify-center mx-auto mb-4">
-          <AlertCircle size={22} className="text-accent-green" />
+          <DownloadModal 
+            isOpen={isDownloadModalOpen}
+            onClose={() => setIsDownloadModalOpen(false)}
+            streamUrl={streamUrl}
+            downloadUrl={downloadUrl}
+            hlsLevels={hlsLevels}
+            audioTracks={audioTracks}
+            subtitles={subtitles}
+            availableLangs={backendLangs}
+            currentLanguage={currentLanguage}
+          />
         </div>
-        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Premium Scraper Offline</h3>
-        <p className="text-xs text-text-muted mt-2 max-w-sm mb-4">We couldn&apos;t resolve a high-speed stream. Try a backup server.</p>
-        <button onClick={() => setActiveServer('vidsrc_to')} className="bg-accent-green text-black font-bold text-xs py-2 px-4 rounded-lg cursor-pointer">
-          Use Backup Embed
-        </button>
       </div>
     );
-  }
+  };
 
   return (
     <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-border">
-      {embedUrl ? (
-        <iframe 
-          src={embedUrl} 
-          {...(serverId !== 'vidnest' ? { sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-popups" } : {})}
-          allowFullScreen 
-          className="w-full h-full" 
-          title="Video Player" 
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-void text-center"><AlertCircle size={32} className="text-text-muted" /></div>
+      {renderPlayerContent()}
+      
+      {adActive && (
+        <div className="absolute inset-0 z-50">
+          <GoogleImaAdPlayer 
+            onComplete={() => setAdActive(false)} 
+            isStreamReady={isDirectStream ? playbackReady : true} 
+            mediaId={String(malId || tmdbId)}
+            mediaType={mediaType}
+          />
+        </div>
       )}
     </div>
   );

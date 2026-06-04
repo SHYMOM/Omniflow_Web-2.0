@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -32,7 +32,7 @@ function WatchContent() {
   const seasonNum = Number(searchParams.get('season') || '1');
 
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
-  const { activeServerId, setActiveServer, downloadUrl } = usePlayerStore();
+  const { activeServerId, setActiveServer, downloadUrl, setIsDownloadModalOpen } = usePlayerStore();
   const { addToHistory } = useUserStore();
 
   const [showAlertStrip, setShowAlertStrip] = useState(true);
@@ -176,6 +176,11 @@ function WatchContent() {
     });
   }, [media, mediaType, epNum, title, seriesTitle, bannerImage, posterImage, addToHistory, rawId]);
 
+  // Memoize view count so it doesn't change on re-renders (like when clicking the download button)
+  const viewCount = useMemo(() => {
+    return ((media as any)?.views || (media as any)?.popularity * 1342 || Math.floor(Math.random() * 500000));
+  }, [media]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[70vh]">
@@ -227,6 +232,7 @@ function WatchContent() {
               season={seasonNum}
               serverId={activeServerId}
               mediaTitle={seriesTitle}
+              imdbId={(media as any)?.imdb_id || (media as any)?.external_ids?.imdb_id || undefined}
             />
           </div>
 
@@ -319,14 +325,16 @@ function WatchContent() {
             </div>
 
             {downloadUrl ? (
-              <a 
-                href={downloadUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDownloadModalOpen(true);
+                }}
                 className="flex items-center justify-center bg-accent-green/20 hover:bg-accent-green/40 w-8 h-8 rounded-full border border-accent-green/30 text-accent-green transition-colors cursor-pointer shadow-[0_0_10px_rgba(0,230,118,0.2)]"
+                title="Download Stream"
               >
                 <Download size={13} />
-              </a>
+              </button>
             ) : (
               <button className="flex items-center justify-center bg-surface/60 w-8 h-8 rounded-full border border-border/40 text-text-muted cursor-not-allowed opacity-50">
                 <Download size={13} />
@@ -369,7 +377,7 @@ function WatchContent() {
             className="bg-surface/30 hover:bg-surface/40 border border-border/30 rounded-xl p-4 cursor-pointer transition-colors group"
           >
             <div className="flex items-center gap-3 text-xs font-bold text-white mb-2">
-              <span>{((media as any)?.views || (media as any)?.popularity * 1342 || Math.floor(Math.random() * 500000)).toLocaleString()} views</span>
+              <span>{viewCount.toLocaleString()} views</span>
               <span>
                 {mediaType === 'anime' 
                   ? ((media as any)?.startDate?.year ? `${(media as any).startDate.year}-${String((media as any).startDate.month).padStart(2,'0')}-${String((media as any).startDate.day).padStart(2,'0')}` : 'Unknown')
