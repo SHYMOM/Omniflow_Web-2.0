@@ -25,6 +25,8 @@ interface PlayerState {
   setAvailableStreams: (streams: { language: string; sourceUrl: string; type: 'm3u8' | 'mp4' }[]) => void;
   externalSubtitles: { lang: string; url: string }[];
   setExternalSubtitles: (subs: { lang: string; url: string }[]) => void;
+  currentStreamUrl: string | null;
+  setCurrentStreamUrl: (url: string | null) => void;
   currentLanguage: string;
   setCurrentLanguage: (lang: string) => void;
   isDownloadModalOpen: boolean;
@@ -60,6 +62,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   setAvailableStreams: (streams) => set({ availableStreams: streams }),
   externalSubtitles: [],
   setExternalSubtitles: (subs) => set({ externalSubtitles: subs }),
+  currentStreamUrl: null,
+  setCurrentStreamUrl: (url) => set({ currentStreamUrl: url }),
   currentLanguage: 'sub',
   setCurrentLanguage: (lang) => set({ currentLanguage: lang }),
   isDownloadModalOpen: false,

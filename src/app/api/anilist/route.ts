@@ -5,7 +5,14 @@ const ANILIST_URL = process.env.ANILIST_BASE_URL || 'https://graphql.anilist.co'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const text = await request.text();
+    if (!text) {
+      return NextResponse.json(
+        { error: 'AniList API error', details: 'Empty request body' },
+        { status: 400 }
+      );
+    }
+    const body = JSON.parse(text);
     const { query, variables } = body;
 
     const response = await axios.post(

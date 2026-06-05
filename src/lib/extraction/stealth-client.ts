@@ -43,30 +43,35 @@ export class StealthHttpClient {
         config.headers = {} as any;
       }
 
+      const hasHeader = (name: string) => {
+        const lowerName = name.toLowerCase();
+        return Object.keys(config.headers || {}).some(k => k.toLowerCase() === lowerName);
+      };
+
       // Rotate User-Agent
-      if (!config.headers['User-Agent']) {
+      if (!hasHeader('User-Agent')) {
         config.headers['User-Agent'] = this.getNextUA();
       }
 
       // Rotate Accept-Language
-      if (!config.headers['Accept-Language']) {
+      if (!hasHeader('Accept-Language')) {
         config.headers['Accept-Language'] = this.getNextLang();
       }
 
       // Standard browser headers
-      if (!config.headers['Accept']) {
+      if (!hasHeader('Accept')) {
         config.headers['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
       }
 
-      if (!config.headers['Accept-Encoding']) {
+      if (!hasHeader('Accept-Encoding')) {
         config.headers['Accept-Encoding'] = 'gzip, deflate, br';
       }
 
-      if (!config.headers['Connection']) {
+      if (!hasHeader('Connection')) {
         config.headers['Connection'] = 'keep-alive';
       }
 
-      if (!config.headers['Sec-Fetch-Dest']) {
+      if (!hasHeader('Sec-Fetch-Dest')) {
         config.headers['Sec-Fetch-Dest'] = 'document';
         config.headers['Sec-Fetch-Mode'] = 'navigate';
         config.headers['Sec-Fetch-Site'] = 'none';

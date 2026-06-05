@@ -153,7 +153,15 @@ export class AnimeExtractionService {
       }
     ];
 
-    const result = await this.registry.executeConcurrently(providers);
+    // Filter active providers based on query parameters (e.g. only run Hindi providers for Hindi language queries)
+    const activeProviders = providers.filter(p => {
+      if (p.name === 'hindidubbed' || p.name === 'desidubanime') {
+        return isHindi;
+      }
+      return true;
+    });
+
+    const result = await this.registry.executeConcurrently(activeProviders);
 
     if (result.success && result.data) {
       // Set default available languages immediately to avoid blocking the client

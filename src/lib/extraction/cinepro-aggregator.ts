@@ -37,7 +37,7 @@ export class CineproAggregator {
         let referer = s.headers?.Referer || s.headers?.referer || '';
         if (!referer && s.provider?.id === 'vidsrc') referer = 'https://cloudnestra.com/';
         if (!referer && s.provider?.id === 'vidnest') referer = 'https://vidnest.fun/';
-        if (!referer && s.provider?.id === 'vidapi') referer = 'https://vidapi.movie/';
+        if (!referer && s.provider?.id === 'vidapi') referer = 'https://brightpathsignals.com/';
         if (!referer && s.provider?.id === 'vidlink') referer = 'https://vidlink.pro/';
         
         return {

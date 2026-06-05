@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { Volume2, VolumeX, ExternalLink } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
@@ -61,8 +61,9 @@ export default function GoogleImaAdPlayer({
   >('loading');
   const [adFinished, setAdFinished] = useState(false);
   const [fallbackMuted, setFallbackMuted] = useState(true); // Start muted → guaranteed autoplay
+  const [customMuted, setCustomMuted] = useState(true);
   const [customAdData, setCustomAdData] = useState<any>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // FIX 6 – Removed dead `sdkLoaded` useState; the SDK presence is checked
   // directly via (window as any).google?.ima in handleStartPlayback, making
@@ -77,6 +78,18 @@ export default function GoogleImaAdPlayer({
     completedRef.current = true;
     onComplete();
   }, [onComplete]);
+
+  // Refs to avoid re-triggering effects on prop/callback changes
+  const handleCompleteRef = useRef(handleComplete);
+  const isStreamReadyRef = useRef(isStreamReady);
+
+  useEffect(() => {
+    handleCompleteRef.current = handleComplete;
+  }, [handleComplete]);
+
+  useEffect(() => {
+    isStreamReadyRef.current = isStreamReady;
+  }, [isStreamReady]);
 
   // ── Ad-finished transition ─────────────────────────────────────────────────
   const handleAdPlaybackFinished = useCallback(() => {
@@ -112,29 +125,42 @@ export default function GoogleImaAdPlayer({
           .eq('key', 'global_ads_enabled')
           .single();
           
-        if (settingsData && settingsData.value === 'false') {
+        if (settingsData && (settingsData.value === 'false' || settingsData.value === false)) {
           // If global ads are disabled, skip all ads!
           if (mounted) {
              setAdFinished(true);
-             if (isStreamReady) handleComplete();
+             if (isStreamReadyRef.current) handleCompleteRef.current();
              else setAdStatus('waiting_for_stream');
           }
           return;
         }
 
+        let adData = null;
         if (mediaId) {
-          const { data: adData } = await supabase
+          const { data } = await supabase
             .from('media_ads')
             .select('*')
             .eq('media_id', mediaId)
             .eq('is_active', true)
             .maybeSingle();
+          adData = data;
+        }
 
-          if (adData && mounted) {
-            setCustomAdData(adData);
-            setAdStatus('custom_ad');
-            return;
-          }
+        if (!adData) {
+          const { data } = await supabase
+            .from('media_ads')
+            .select('*')
+            .eq('is_global', true)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          adData = data;
+        }
+
+        if (adData && mounted) {
+          setCustomAdData(adData);
+          setAdStatus('custom_ad');
+          return;
         }
         
         // No custom ad, proceed to load Google IMA
@@ -146,7 +172,8 @@ export default function GoogleImaAdPlayer({
     fetchCustomAd();
     
     return () => { mounted = false; };
-  }, [mediaId, isStreamReady, handleComplete, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaId, supabase]);
 
   const loadImaSdk = () => {
     if ((window as any).google?.ima) {
@@ -166,8 +193,8 @@ export default function GoogleImaAdPlayer({
         } else if ((window as any).__imaFailed || attempts > 20) {
           console.warn('[IMA] SDK check timed out or blocked. Bypassing ads.');
           setAdFinished(true);
-          if (isStreamReady) {
-            handleComplete();
+          if (isStreamReadyRef.current) {
+            handleCompleteRef.current();
           } else {
             setAdStatus('waiting_for_stream');
           }
@@ -186,8 +213,8 @@ export default function GoogleImaAdPlayer({
       (window as any).__imaFailed = true;
       console.warn('[IMA] SDK blocked. Bypassing ads.');
       setAdFinished(true);
-      if (isStreamReady) {
-        handleComplete();
+      if (isStreamReadyRef.current) {
+        handleCompleteRef.current();
       } else {
         setAdStatus('waiting_for_stream');
       }
@@ -215,8 +242,8 @@ export default function GoogleImaAdPlayer({
     if (!google?.ima) {
       console.warn('[IMA] Google SDK not found. Bypassing ads.');
       setAdFinished(true);
-      if (isStreamReady) {
-        handleComplete();
+      if (isStreamReadyRef.current) {
+        handleCompleteRef.current();
       } else {
         setAdStatus('waiting_for_stream');
       }
@@ -523,12 +550,28 @@ export default function GoogleImaAdPlayer({
           {/* ── 3.5. CUSTOM ADMIN AD ────────────────────────────────────────────── */}
       {adStatus === 'custom_ad' && customAdData && (
         <div className="absolute inset-0 w-full h-full z-30 bg-black flex items-center justify-center">
-          <img 
-            src={customAdData.image_url} 
-            alt={customAdData.title}
-            className="w-full h-full object-cover"
-            onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/1280x720?text=Ad')}
-          />
+          {customAdData.video_url ? (
+            <video
+              src={customAdData.video_url}
+              className="w-full h-full object-cover"
+              autoPlay
+              playsInline
+              loop
+              muted={customMuted}
+              onEnded={() => {
+                if (isStreamReady) {
+                  handleComplete();
+                }
+              }}
+            />
+          ) : (
+            <img 
+              src={customAdData.image_url} 
+              alt={customAdData.title}
+              className="w-full h-full object-cover"
+              onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/1280x720?text=Ad')}
+            />
+          )}
           
           {/* Top Info Banner */}
           <div className="absolute top-4 left-4 z-40 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2">
@@ -551,12 +594,21 @@ export default function GoogleImaAdPlayer({
             <ExternalLink size={12} />
           </a>
 
-          {/* Controls: Skip */}
+          {/* Controls: Skip & Volume */}
           <div className="absolute bottom-4 right-4 z-40 flex items-center gap-3">
+            {customAdData.video_url && (
+              <button
+                onClick={() => setCustomMuted(!customMuted)}
+                className="w-9 h-9 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/80 transition-colors cursor-pointer"
+              >
+                {customMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              </button>
+            )}
+
             {isStreamReady ? (
               <button
                 onClick={handleComplete}
-                className="bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white font-semibold text-xs py-2 px-5 rounded-lg flex items-center gap-2 transition-colors animate-pulse"
+                className="bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white font-semibold text-xs py-2 px-5 rounded-lg flex items-center gap-2 transition-colors animate-pulse cursor-pointer"
               >
                 Skip Ad
               </button>

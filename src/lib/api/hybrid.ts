@@ -591,11 +591,12 @@ export async function searchHybrid(query: string, page = 1, hideAdult = true): P
  */
 export async function getHybridRecommendations(id: string, type: string): Promise<MediaItem[]> {
   const numericId = extractId(id);
+  let results: MediaItem[] = [];
   
   if (type === 'anime') {
     try {
       const media = await getAnimeDetail(String(numericId));
-      return media.recommendations?.nodes
+      results = media.recommendations?.nodes
         ?.map(n => n?.mediaRecommendation)
         .filter((r): r is NonNullable<typeof r> => !!r)
         .map((r: any) => ({
@@ -620,7 +621,7 @@ export async function getHybridRecommendations(id: string, type: string): Promis
     try {
       const res = await (await fetch(`/api/tmdb/${type}/${numericId}`)).json();
       const recs = res.recommendations?.results || res.similar?.results || [];
-      return recs.slice(0, 12).map((item: any) => {
+      results = recs.slice(0, 12).map((item: any) => {
         if (type === 'movie') return mapTMDBMovieToMediaItem(item);
         return mapTMDBTVToMediaItem(item);
       });
@@ -629,5 +630,11 @@ export async function getHybridRecommendations(id: string, type: string): Promis
     }
   }
   
-  return [];
+  // Deduplicate by ID to prevent duplicate React keys
+  const seen = new Set<string>();
+  return results.filter(item => {
+    if (!item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }

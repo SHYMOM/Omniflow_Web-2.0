@@ -55,7 +55,7 @@ export class VidSrcProvider extends BaseProvider {
                 return this.emptyResult('Invalid or expired token', media);
             }
 
-            const secondHtml = await this.fetchPage(secondUrl.url, media);
+            const secondHtml = await this.fetchPage(secondUrl.url, media, pageUrl);
             if (!secondHtml) {
                 return this.emptyResult('Failed to fetch stream page', media);
             }
@@ -65,7 +65,7 @@ export class VidSrcProvider extends BaseProvider {
                 return this.emptyResult('Failed to extract stream URL', media);
             }
 
-            const thirdHtml = await this.fetchPage(thirdUrl.url, media);
+            const thirdHtml = await this.fetchPage(thirdUrl.url, media, secondUrl.url);
             if (!thirdHtml) {
                 return this.emptyResult(
                     'Failed to fetch final stream page',
@@ -122,9 +122,9 @@ export class VidSrcProvider extends BaseProvider {
      */
     private buildPageUrl(media: ProviderMediaObject): string {
         if (media.type === 'movie') {
-            return `${this.BASE_URL}/embed/movie?tmdb=${media.tmdbId}`;
+            return `${this.BASE_URL}embed/movie?tmdb=${media.tmdbId}`;
         } else {
-            return `${this.BASE_URL}/embed/tv?tmdb=${media.tmdbId}&season=${media.s}&episode=${media.e}`;
+            return `${this.BASE_URL}embed/tv?tmdb=${media.tmdbId}&season=${media.s}&episode=${media.e}`;
         }
     }
 
@@ -133,15 +133,21 @@ export class VidSrcProvider extends BaseProvider {
      */
     private async fetchPage(
         url: string,
-        media: ProviderMediaObject
+        media: ProviderMediaObject,
+        customReferer?: string
     ): Promise<string | null> {
         try {
             if (url.startsWith('//')) {
                 url = 'https:' + url;
             }
 
+            const headers = {
+                ...this.HEADERS,
+                Referer: customReferer || this.BASE_URL
+            };
+
             const response = await fetch(url, {
-                headers: this.HEADERS
+                headers
             });
 
             if (response.status !== 200) {

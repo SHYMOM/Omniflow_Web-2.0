@@ -90,6 +90,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const [isLoading, setIsLoading] = useState(true);
   const [isBuffering, setIsBuffering] = useState(false);
   const [adActive, setAdActive] = useState(false);
+  const [adFinished, setAdFinished] = useState(false);
   const [isDirectStream, setIsDirectStream] = useState(false);
   const [playbackReady, setPlaybackReady] = useState(false);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -216,6 +217,35 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     fetch('/servers.json').then(r => r.json()).then(setServers).catch(() => {});
   }, []);
 
+  // Seamless ad overlay cleanup and video playback trigger
+  useEffect(() => {
+    if (adActive && adFinished) {
+      if (isPlaying) {
+        setAdActive(false);
+        setAdFinished(false);
+      } else {
+        // Attempt to start playing the main video
+        if (playbackReady && videoRef.current) {
+          videoRef.current.play()
+            .then(() => setIsPlaying(true))
+            .catch((err) => {
+              console.warn('[VideoPlayer] Playback failed after ad:', err);
+              // Force unmount if play fails (blocks) so user can manual-play
+              setAdActive(false);
+              setAdFinished(false);
+            });
+        }
+        
+        // Timeout fallback: if video doesn't transition to playing in 2.5 seconds, force unmount ad
+        const timer = setTimeout(() => {
+          setAdActive(false);
+          setAdFinished(false);
+        }, 2500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [adActive, adFinished, isPlaying, playbackReady]);
+
   const [resolvedTmdbId, setResolvedTmdbId] = useState<number | null>(tmdbId);
 
   // 1b. Fetch real TMDB ID for Anime (since frontend only has MAL/Anilist ID)
@@ -283,6 +313,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
     setIsLoading(true);
     setAdActive(true);
+    setAdFinished(false);
     setIsDirectStream(true); // Mount direct player container immediately for ad overlay and background buffering
     setPlaybackReady(false); // Reset buffering state
     setStreamUrl(null);
@@ -1245,7 +1276,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       {adActive && (
         <div className="absolute inset-0 z-50">
           <GoogleImaAdPlayer 
-            onComplete={() => setAdActive(false)} 
+            onComplete={() => setAdFinished(true)} 
             isStreamReady={isDirectStream ? playbackReady : true} 
             mediaId={String(malId || tmdbId)}
             mediaType={mediaType}

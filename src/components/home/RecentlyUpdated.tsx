@@ -68,7 +68,14 @@ export default function RecentlyUpdated() {
   }, [inView, fetchNextPage, hasNextPage]);
 
   const allItems = useMemo(() => {
-    return data?.pages.flat() || [];
+    const rawItems = data?.pages.flat() || [];
+    const seen = new Set<string>();
+    return rawItems.filter((rawMedia) => {
+      const item = mapAniListToMediaItem(rawMedia);
+      if (!item.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
   }, [data]);
 
   if (status === 'pending') {

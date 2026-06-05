@@ -82,6 +82,10 @@ export async function GET(request: NextRequest) {
         const finalUrl = stream.video_url;
         let finalReferer = (stream as any).referer || '';
         
+        if (finalReferer === 'https://vidapi.movie/' || finalUrl.includes('smartincomeplaybook.site')) {
+          finalReferer = 'https://brightpathsignals.com/';
+        }
+        
         let proxiedUrl = finalUrl;
         if (!finalUrl.includes('/api/stream/proxy')) {
           if (!finalReferer) {
@@ -96,8 +100,8 @@ export async function GET(request: NextRequest) {
               finalReferer = 'https://allwish.me/';
             } else if (finalUrl.includes('gogoanime') || finalUrl.includes('empoweredfreelancerhub.site') || finalUrl.includes('vibeplayer')) {
               finalReferer = 'https://vibeplayer.site/';
-            } else if (finalUrl.includes('vidapi')) {
-              finalReferer = 'https://vidapi.movie/';
+            } else if (finalUrl.includes('vidapi') || finalUrl.includes('smartincomeplaybook.site')) {
+              finalReferer = 'https://brightpathsignals.com/';
             } else if (finalUrl.includes('/cdnstr/') || finalUrl.includes('/static/') || finalUrl.includes('vidlink') || finalUrl.includes('tmstrd.justhd.tv')) {
               finalReferer = 'https://vidlink.pro/';
             }
@@ -110,7 +114,7 @@ export async function GET(request: NextRequest) {
               } else if (sn.includes('vidnest')) {
                 finalReferer = 'https://vidnest.fun/';
               } else if (sn.includes('vidapi')) {
-                finalReferer = 'https://vidapi.movie/';
+                finalReferer = 'https://brightpathsignals.com/';
               } else if (sn.includes('vidlink')) {
                 finalReferer = 'https://vidlink.pro/';
               } else if (sn.includes('animepahe')) {

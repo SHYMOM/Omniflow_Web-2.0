@@ -19,9 +19,11 @@ export default function AdsManager() {
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [searching, setSearching] = useState(false);
   
+  const [isGlobal, setIsGlobal] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [adTitle, setAdTitle] = useState('');
   const [adImageUrl, setAdImageUrl] = useState('');
+  const [adVideoUrl, setAdVideoUrl] = useState('');
   const [adTargetUrl, setAdTargetUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -134,19 +136,21 @@ export default function AdsManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedMedia) return toast.error('Please select a media item');
-    if (!adTitle || !adImageUrl || !adTargetUrl) return toast.error('Please fill in all fields');
+    if (!isGlobal && !selectedMedia) return toast.error('Please select a media item');
+    if (!adTitle || !adImageUrl || !adTargetUrl) return toast.error('Please fill in all required fields');
 
     setIsSubmitting(true);
     try {
       const { error } = await supabase
         .from('media_ads')
         .insert({
-          media_id: String(selectedMedia.id),
-          media_type: selectedMedia.type || 'anime',
+          media_id: isGlobal ? null : String(selectedMedia?.id),
+          media_type: isGlobal ? null : (selectedMedia?.type || 'anime'),
           title: adTitle,
           image_url: adImageUrl,
+          video_url: adVideoUrl || null,
           target_url: adTargetUrl,
+          is_global: isGlobal,
           is_active: true
         });
 
@@ -157,6 +161,7 @@ export default function AdsManager() {
       setSelectedMedia(null);
       setAdTitle('');
       setAdImageUrl('');
+      setAdVideoUrl('');
       setAdTargetUrl('');
       fetchAdsAndSettings();
     } catch (err: any) {
@@ -203,66 +208,97 @@ export default function AdsManager() {
           </div>
           
           <form onSubmit={handleSubmit} className="p-4 space-y-4">
-            {/* Media Selection */}
+            {/* Target Type Selector */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Target Media</label>
-              
-              {!selectedMedia ? (
-                <div className="relative">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 text-text-muted" size={14} />
-                    <input 
-                      type="text" 
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search movie, show, or anime..."
-                      className="w-full bg-void border border-border rounded-lg pl-9 pr-4 py-2 text-xs text-white outline-none focus:border-accent-green transition-colors"
-                    />
-                    {searching && <RefreshCw className="absolute right-3 top-2.5 text-text-muted animate-spin" size={14} />}
-                  </div>
-                  
-                  {/* Search Dropdown */}
-                  {searchResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-                      {searchResults.map((result) => (
-                        <div 
-                          key={result.id}
-                          onClick={() => handleSelectMedia(result)}
-                          className="flex items-center gap-3 p-2 hover:bg-void cursor-pointer border-b border-border/50 last:border-0"
-                        >
-                          {result.posterUrl ? (
-                            <img src={result.posterUrl} alt={result.title} className="w-8 h-12 object-cover rounded" />
-                          ) : (
-                            <div className="w-8 h-12 bg-void rounded flex items-center justify-center border border-border"><ImageIcon size={12} className="text-text-muted"/></div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-white truncate">{result.title}</p>
-                            <p className="text-[10px] text-text-muted">{result.formatLabel} • {result.year}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center justify-between bg-void border border-accent-green/30 p-2 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <img src={selectedMedia.posterUrl} alt={selectedMedia.title} className="w-8 h-12 object-cover rounded" />
-                    <div>
-                      <p className="text-xs font-bold text-white line-clamp-1">{selectedMedia.title}</p>
-                      <p className="text-[10px] text-accent-green">{selectedMedia.formatLabel} ({selectedMedia.id})</p>
-                    </div>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedMedia(null)}
-                    className="p-1.5 text-text-muted hover:text-accent-red transition-colors cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Targeting Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsGlobal(false); setSelectedMedia(null); }}
+                  className={`py-1.5 px-3 rounded text-xs font-bold border transition-all cursor-pointer ${
+                    !isGlobal 
+                      ? 'bg-accent-green/20 text-accent-green border-accent-green/30' 
+                      : 'bg-void text-text-secondary border-border hover:text-white'
+                  }`}
+                >
+                  Specific Media
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsGlobal(true); setSelectedMedia(null); if (!adTitle) setAdTitle('Global Ad Campaign'); }}
+                  className={`py-1.5 px-3 rounded text-xs font-bold border transition-all cursor-pointer ${
+                    isGlobal 
+                      ? 'bg-accent-green/20 text-accent-green border-accent-green/30' 
+                      : 'bg-void text-text-secondary border-border hover:text-white'
+                  }`}
+                >
+                  Global Override
+                </button>
+              </div>
             </div>
+
+            {/* Media Selection */}
+            {!isGlobal && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Target Media</label>
+                
+                {!selectedMedia ? (
+                  <div className="relative">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 text-text-muted" size={14} />
+                      <input 
+                        type="text" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search movie, show, or anime..."
+                        className="w-full bg-void border border-border rounded-lg pl-9 pr-4 py-2 text-xs text-white outline-none focus:border-accent-green transition-colors"
+                      />
+                      {searching && <RefreshCw className="absolute right-3 top-2.5 text-text-muted animate-spin" size={14} />}
+                    </div>
+                    
+                    {/* Search Dropdown */}
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                        {searchResults.map((result) => (
+                          <div 
+                            key={result.id}
+                            onClick={() => handleSelectMedia(result)}
+                            className="flex items-center gap-3 p-2 hover:bg-void cursor-pointer border-b border-border/50 last:border-0"
+                          >
+                            {result.posterUrl ? (
+                              <img src={result.posterUrl} alt={result.title} className="w-8 h-12 object-cover rounded" />
+                            ) : (
+                              <div className="w-8 h-12 bg-void rounded flex items-center justify-center border border-border"><ImageIcon size={12} className="text-text-muted"/></div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-white truncate">{result.title}</p>
+                              <p className="text-[10px] text-text-muted">{result.formatLabel} • {result.year}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-void border border-accent-green/30 p-2 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <img src={selectedMedia.posterUrl} alt={selectedMedia.title} className="w-8 h-12 object-cover rounded" />
+                      <div>
+                        <p className="text-xs font-bold text-white line-clamp-1">{selectedMedia.title}</p>
+                        <p className="text-[10px] text-accent-green">{selectedMedia.formatLabel} ({selectedMedia.id})</p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedMedia(null)}
+                      className="p-1.5 text-text-muted hover:text-accent-red transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Campaign Title</label>
@@ -277,7 +313,7 @@ export default function AdsManager() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Banner Image URL</label>
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Banner Image URL (Required fallback)</label>
               <div className="relative">
                 <ImageIcon className="absolute left-3 top-2.5 text-text-muted" size={14} />
                 <input 
@@ -287,6 +323,20 @@ export default function AdsManager() {
                   placeholder="https://example.com/banner.jpg"
                   className="w-full bg-void border border-border rounded-lg pl-9 pr-4 py-2 text-xs text-white outline-none focus:border-accent-green transition-colors"
                   required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Video Ad URL (Optional pre-roll)</label>
+              <div className="relative">
+                <LinkIcon className="absolute left-3 top-2.5 text-text-muted" size={14} />
+                <input 
+                  type="url" 
+                  value={adVideoUrl}
+                  onChange={(e) => setAdVideoUrl(e.target.value)}
+                  placeholder="https://example.com/pre-roll-ad.mp4"
+                  className="w-full bg-void border border-border rounded-lg pl-9 pr-4 py-2 text-xs text-white outline-none focus:border-accent-green transition-colors"
                 />
               </div>
             </div>
@@ -308,7 +358,7 @@ export default function AdsManager() {
 
             <button 
               type="submit" 
-              disabled={isSubmitting || !selectedMedia}
+              disabled={isSubmitting || (!isGlobal && !selectedMedia)}
               className="w-full mt-4 px-4 py-2 bg-accent-green hover:bg-accent-green/90 text-black rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Creating...' : 'Create Campaign'}
@@ -357,16 +407,31 @@ export default function AdsManager() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <p className="font-bold mb-1">{ad.title}</p>
-                        <a href={ad.target_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent-green hover:underline flex items-center gap-1">
-                          <LinkIcon size={10} /> Link
-                        </a>
+                        <p className="font-bold mb-0.5">{ad.title}</p>
+                        <div className="flex flex-col gap-1">
+                          <a href={ad.target_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent-green hover:underline flex items-center gap-1">
+                            <LinkIcon size={10} /> Destination Link
+                          </a>
+                          {ad.video_url && (
+                            <span className="text-[10px] text-text-secondary truncate max-w-[200px]" title={ad.video_url}>
+                              Video: {ad.video_url}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-4">
-                        <span className="font-mono text-text-muted bg-void px-2 py-1 rounded border border-border">
-                          {ad.media_id}
-                        </span>
-                        <p className="text-[10px] text-text-secondary mt-1 uppercase">{ad.media_type}</p>
+                        {ad.is_global ? (
+                          <span className="text-[10px] font-bold text-accent-green bg-accent-green/20 px-2 py-1 rounded border border-accent-green/30 uppercase">
+                            Global Campaign
+                          </span>
+                        ) : (
+                          <>
+                            <span className="font-mono text-text-muted bg-void px-2 py-1 rounded border border-border">
+                              {ad.media_id}
+                            </span>
+                            <p className="text-[10px] text-text-secondary mt-1 uppercase">{ad.media_type}</p>
+                          </>
+                        )}
                       </td>
                       <td className="p-4">
                         <button

@@ -25,8 +25,35 @@ export async function GET(request: NextRequest) {
       return new NextResponse('Missing url parameter', { status: 400, headers: corsHeaders });
     }
 
+    // Determine content type from URL early
+    const isPlaylist = targetUrl.includes('.m3u8') || targetUrl.includes('m3u8');
+    const isImage = /\.(jpe?g|png|webp|gif|avif|bmp)(\?|$)/i.test(targetUrl);
+    const isSubtitle = searchParams.get('type') === 'sub' || /\.(vtt|srt)(\?|$)/i.test(targetUrl) || targetUrl.includes('subtitle') || targetUrl.includes('subs');
+
     // Prepare headers for the target request
     const headers: Record<string, string> = {};
+
+    // Forward relevant client headers to mimic the browser's original footprint exactly
+    const headersToForward = [
+      'user-agent',
+      'sec-ch-ua',
+      'sec-ch-ua-mobile',
+      'sec-ch-ua-platform',
+      'accept-language'
+    ];
+    for (const h of headersToForward) {
+      const val = request.headers.get(h);
+      if (val) {
+        // Map to standard Title-Case names so they match stealth-client checks precisely
+        const titleCaseKey = h.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('-');
+        headers[titleCaseKey] = val;
+      }
+    }
+
+    // Explicitly set correct Sec-Fetch headers for a cross-origin resource request
+    headers['Sec-Fetch-Dest'] = isPlaylist ? 'empty' : (isImage ? 'image' : (isSubtitle ? 'empty' : 'empty'));
+    headers['Sec-Fetch-Mode'] = 'cors';
+    headers['Sec-Fetch-Site'] = 'cross-site';
 
     if (referer) {
       headers['Referer'] = referer;
@@ -42,11 +69,6 @@ export async function GET(request: NextRequest) {
     if (rangeHeader) {
       headers['Range'] = rangeHeader;
     }
-
-    // Determine content type from URL
-    const isPlaylist = targetUrl.includes('.m3u8') || targetUrl.includes('m3u8');
-    const isImage = /\.(jpe?g|png|webp|gif|avif|bmp)(\?|$)/i.test(targetUrl);
-    const isSubtitle = searchParams.get('type') === 'sub' || /\.(vtt|srt)(\?|$)/i.test(targetUrl) || targetUrl.includes('subtitle') || targetUrl.includes('subs');
 
     // ─── SUBTITLE PROXY (with SRT to VTT conversion) ──────────
     if (isSubtitle) {

@@ -46,6 +46,7 @@ function WatchContent() {
   const [inWatchlist, setInWatchlist] = useState(false);
   const [showShareTooltip, setShowShareTooltip] = useState(false);
   const [activeAd, setActiveAd] = useState<any>(null);
+  const [viewCount, setViewCount] = useState<number | null>(null);
 
   const toggleWatchlist = () => setInWatchlist(!inWatchlist);
   const handleShare = () => {
@@ -126,7 +127,7 @@ function WatchContent() {
         .eq('key', 'global_ads_enabled')
         .single();
         
-      if (settingsData && settingsData.value === 'false') return;
+      if (settingsData && (settingsData.value === 'false' || settingsData.value === false)) return;
 
       const { data: adData } = await supabase
         .from('media_ads')
@@ -176,10 +177,19 @@ function WatchContent() {
     });
   }, [media, mediaType, epNum, title, seriesTitle, bannerImage, posterImage, addToHistory, rawId]);
 
-  // Memoize view count so it doesn't change on re-renders (like when clicking the download button)
-  const viewCount = useMemo(() => {
-    return ((media as any)?.views || (media as any)?.popularity * 1342 || Math.floor(Math.random() * 500000));
-  }, [media]);
+  // Reset viewCount and activeAd when rawId changes
+  useEffect(() => {
+    setViewCount(null);
+    setActiveAd(null);
+  }, [rawId]);
+
+  // Initialize viewCount once when media is loaded
+  useEffect(() => {
+    if (media && viewCount === null) {
+      const count = ((media as any)?.views || (media as any)?.popularity * 1342 || Math.floor(Math.random() * 500000));
+      setViewCount(Math.floor(count));
+    }
+  }, [media, viewCount]);
 
   if (isLoading) {
     return (
@@ -377,7 +387,7 @@ function WatchContent() {
             className="bg-surface/30 hover:bg-surface/40 border border-border/30 rounded-xl p-4 cursor-pointer transition-colors group"
           >
             <div className="flex items-center gap-3 text-xs font-bold text-white mb-2">
-              <span>{viewCount.toLocaleString()} views</span>
+              <span>{(viewCount || 0).toLocaleString()} views</span>
               <span>
                 {mediaType === 'anime' 
                   ? ((media as any)?.startDate?.year ? `${(media as any).startDate.year}-${String((media as any).startDate.month).padStart(2,'0')}-${String((media as any).startDate.day).padStart(2,'0')}` : 'Unknown')
