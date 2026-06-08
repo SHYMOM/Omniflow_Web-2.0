@@ -265,7 +265,7 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
       {recommendations.length > 0 && (
         <div className="pt-4 space-y-3">
           <h3 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-1">More Like This</h3>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-3 gap-3">
             {recommendations.slice(0, 6).map((rec) => (
               <Link key={rec.id} href={`/${rec.type}/${rec.id}`} className="group">
                 <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-surface mb-1.5 border border-border/30 group-hover:border-accent-green/50 transition-all">

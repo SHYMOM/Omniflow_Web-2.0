@@ -207,6 +207,37 @@ export class AnimeExtractionService {
     return langs;
   }
 
+  // ─── Utilities ──────────────────────────────────────────────
+  
+  private findBestMatch(results: any[], targetTitle: string): any {
+    if (!results || results.length === 0) return null;
+    const target = targetTitle.toLowerCase().trim();
+    
+    // 1. Exact match
+    let best = results.find(r => {
+      const t = (r.title || r.title?.english || r.title?.romaji || '').toLowerCase().trim();
+      return t === target || t === `${target} (dub)` || t === `${target} (tv)`;
+    });
+    if (best) return best;
+
+    // 2. Starts with match (prevents "Boruto: Naruto Next Gen" winning over "Naruto")
+    best = results.find(r => {
+      const t = (r.title || r.title?.english || r.title?.romaji || '').toLowerCase().trim();
+      return t.startsWith(target);
+    });
+    if (best) return best;
+
+    // 3. Includes match
+    best = results.find(r => {
+      const t = (r.title || r.title?.english || r.title?.romaji || '').toLowerCase().trim();
+      return t.includes(target);
+    });
+    if (best) return best;
+
+    // 4. Absolute fallback
+    return results[0];
+  }
+
   // ─── Provider Implementations ────────────────────────────────
 
   private async extractFromZoro(title: string, episode: number, language: string): Promise<IStreamResult> {
@@ -214,7 +245,9 @@ export class AnimeExtractionService {
     const searchRes = await zoro.search(title);
     if (!searchRes.results?.length) throw new Error(`Zoro: No results`);
 
-    const matched = searchRes.results[0];
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`Zoro: No matched results`);
+
     const info = await zoro.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`Zoro: Episode not found`);
@@ -276,8 +309,8 @@ export class AnimeExtractionService {
        try {
           const searchRes = await gogo.search(q);
           if (searchRes.results?.length) {
-             matched = searchRes.results[0];
-             break;
+             matched = this.findBestMatch(searchRes.results, title);
+             if (matched) break;
           }
        } catch (e) {}
     }
@@ -304,7 +337,9 @@ export class AnimeExtractionService {
     const searchRes = await pahe.search(title);
     if (!searchRes.results?.length) throw new Error(`AnimePahe: No results`);
 
-    const matched = searchRes.results[0];
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`AnimePahe: No matched results`);
+
     const info = await pahe.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`AnimePahe: Episode not found`);

@@ -199,7 +199,7 @@ class Zoro extends AnimeParser {
 
       return res;
     } catch (err) {
-      throw new Error('Something went wrong. Please try again later.');
+      throw new Error((err as Error).message || 'Something went wrong. Please try again later.');
     }
   }
   /**
@@ -249,7 +249,7 @@ class Zoro extends AnimeParser {
 
       return res;
     } catch (err) {
-      throw new Error('Something went wrong. Please try again later.');
+      throw new Error((err as Error).message || 'Something went wrong. Please try again later.');
     }
   }
 
@@ -288,7 +288,7 @@ class Zoro extends AnimeParser {
 
       return res;
     } catch (error) {
-      throw new Error('Something went wrong. Please try again later.');
+      throw new Error((error as Error).message || 'Something went wrong. Please try again later.');
     }
   }
 
@@ -327,7 +327,7 @@ class Zoro extends AnimeParser {
 
       return res;
     } catch (error) {
-      throw new Error('Something went wrong. Please try again later.');
+      throw new Error((error as Error).message || 'Something went wrong. Please try again later.');
     }
   }
 
@@ -629,7 +629,7 @@ class Zoro extends AnimeParser {
       }
       return res;
     } catch (err) {
-      throw new Error('Something went wrong. Please try again later.');
+      throw new Error((err as Error).message || 'Something went wrong. Please try again later.');
     }
   };
 
@@ -666,7 +666,7 @@ class Zoro extends AnimeParser {
       });
       return results;
     } catch (err) {
-      throw new Error('Something went wrong. Please try again later.');
+      throw new Error((err as Error).message || 'Something went wrong. Please try again later.');
     }
   };
   /**

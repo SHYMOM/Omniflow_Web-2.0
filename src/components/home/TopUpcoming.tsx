@@ -75,7 +75,7 @@ export default function TopUpcoming({ items, onLoadMore }: TopUpcomingProps) {
         >
           {(() => {
             const seen = new Set();
-            return items.map((rawMedia) => {
+            return items.map((rawMedia, idx) => {
               const item = typeof rawMedia.id === 'string' ? rawMedia as MediaItem : mapAniListToMediaItem(rawMedia as AniListMedia);
               if (seen.has(item.id)) return null;
               seen.add(item.id);
@@ -111,6 +111,7 @@ export default function TopUpcoming({ items, onLoadMore }: TopUpcomingProps) {
                           src={posterUrl}
                           alt={title}
                           fill
+                          priority={idx === 0}
                           className="object-cover group-hover:scale-105 transition-transform"
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                       )}

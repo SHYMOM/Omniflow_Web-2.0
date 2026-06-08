@@ -1,34 +1,55 @@
-import { load } from 'cheerio';
+import { detectAndUnpack } from '../../extraction/utils/jsunpack';
+import { VideoExtractor, IVideo } from '../models';
 
-import { VideoExtractor, IVideo, ISubtitle, Intro } from '../models';
-import { USER_AGENT } from '../utils';
-import { Console } from 'console';
+export async function extractFileMoon(url: string): Promise<{ url: string; type: 'hls' | 'mp4'; headers?: Record<string, string> }> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': url
+      }
+    });
+    
+    if (!res.ok) throw new Error(`FileMoon failed with status ${res.status}`);
+    const html = await res.text();
+    
+    let unpacked = html;
+    // Look for packed script structure inside the HTML page
+    const packedMatch = html.match(/eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*d\s*\).+?\}\s*\)\s*\)/s);
+    if (packedMatch) {
+        unpacked = detectAndUnpack(packedMatch[0]);
+    }
+    
+    // Extract the master HLS .m3u8 link (usually hidden in `file:"..."` or `src:"..."` arrays)
+    const m3u8Match = unpacked.match(/\{?\s*(?:file|src)\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i);
+    
+    if (!m3u8Match || !m3u8Match[1]) {
+      throw new Error('FileMoon: Master M3U8 not found');
+    }
+    
+    return {
+      url: m3u8Match[1],
+      type: 'hls',
+      headers: {
+        'Referer': new URL(url).origin + '/'
+      }
+    };
+  } catch (error) {
+    throw new Error(`FileMoon extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
-/**
- * work in progress
- */
 class Filemoon extends VideoExtractor {
   protected override serverName = 'Filemoon';
   protected override sources: IVideo[] = [];
 
-  private readonly host = 'https://filemoon.sx';
-
   override extract = async (videoUrl: URL): Promise<IVideo[]> => {
-    const options = {
-      headers: {
-        Referer: videoUrl.href,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': USER_AGENT,
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-    };
-
-    const { data } = await this.client.get(videoUrl.href);
-
-    const s = data.substring(data.indexOf('eval(function') + 5, data.lastIndexOf(')))'));
-    try {
-      const newScript = 'function run(' + s.split('function(')[1] + '))';
-    } catch (err) {}
+    const result = await extractFileMoon(videoUrl.href);
+    this.sources.push({
+      url: result.url,
+      isM3U8: result.type === 'hls',
+      headers: result.headers
+    });
     return this.sources;
   };
 }

@@ -230,8 +230,9 @@ export class UniversalAggregatorService {
       }
 
     // EMBED PROVIDER SCRAPER (runs independently via playwright network interception)
-    // Only fires when we have an IMDB ID, which is resolved above.
-    if (finalImdbId && (mediaType === 'movie' || mediaType === 'tv')) {
+    // Runs using IMDB ID, but falls back to TMDB ID if IMDB is not found.
+    const scrapeTargetId = finalImdbId || tmdbId;
+    if (scrapeTargetId && (mediaType === 'movie' || mediaType === 'tv')) {
       const embedTask = (async () => {
         const streams: UniversalStream[] = [];
         const subtitles: UniversalSubtitle[] = [];
@@ -239,8 +240,8 @@ export class UniversalAggregatorService {
           const { EmbedProviderAggregator } = await import('./embed-provider-aggregator');
           const embedAgg = new EmbedProviderAggregator();
           const result = mediaType === 'movie'
-            ? await embedAgg.scrapeMovie(finalImdbId)
-            : await embedAgg.scrapeSeries(finalImdbId, season, episode);
+            ? await embedAgg.scrapeMovie(scrapeTargetId)
+            : await embedAgg.scrapeSeries(scrapeTargetId, season, episode);
 
           if (result?.sources && result.sources.length > 0) {
             result.sources.forEach(src => {
@@ -341,8 +342,8 @@ export class UniversalAggregatorService {
       });
     };
 
-    // 4. Wait for the first success (with a low timeout of 8s)
-    const initialResults = await firstSuccess(allTasks, 8000);
+    // 4. Wait for the first success (with a higher timeout of 20s to allow playwright to boot)
+    const initialResults = await firstSuccess(allTasks, 20000);
     
     // Extract what we found so far to return immediately
     const foundStreams: UniversalStream[] = [];

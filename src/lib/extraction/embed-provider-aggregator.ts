@@ -16,6 +16,16 @@ export class EmbedProviderAggregator {
       getTvUrl: (id, s, e) => `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`
     },
     {
+      name: 'vidsrc.to',
+      getMovieUrl: (id) => `https://vidsrc.to/embed/movie/${id}`,
+      getTvUrl: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+    },
+    {
+      name: 'vidsrc.me',
+      getMovieUrl: (id) => `https://vidsrc.me/embed/movie/${id}`,
+      getTvUrl: (id, s, e) => `https://vidsrc.me/embed/tv/${id}/${s}/${e}`
+    },
+    {
       name: 'embed.su',
       getMovieUrl: (id) => `https://embed.su/embed/movie/${id}`,
       getTvUrl: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`
@@ -90,15 +100,15 @@ export class EmbedProviderAggregator {
         });
 
         try {
-          await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 5000 });
+          await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
           // Micro delay to let network requests fire
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(2000);
           
           // Trigger a click to start load/play
           await page.mouse.click(400, 300).catch(() => {});
           
-          // Wait another short moment
-          await page.waitForTimeout(1500);
+          // Wait another moment for the play click to trigger network requests
+          await page.waitForTimeout(3000);
         } catch (err) {
           // Page fail is fine, other pages might succeed
         } finally {
@@ -109,7 +119,7 @@ export class EmbedProviderAggregator {
       // Run all pages in parallel with a timeout
       await Promise.race([
         Promise.all(scrapePromises),
-        new Promise(resolve => setTimeout(resolve, 6000))
+        new Promise(resolve => setTimeout(resolve, 18000))
       ]);
 
     } catch (e) {

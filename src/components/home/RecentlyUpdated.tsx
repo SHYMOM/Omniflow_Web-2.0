@@ -111,7 +111,7 @@ export default function RecentlyUpdated() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {(() => {
           const seen = new Set();
-          return allItems.map((rawMedia) => {
+          return allItems.map((rawMedia, idx) => {
             const item = mapAniListToMediaItem(rawMedia);
             if (seen.has(item.id)) return null;
             seen.add(item.id);
@@ -134,6 +134,7 @@ export default function RecentlyUpdated() {
                       src={bannerUrl}
                       alt={title}
                       fill
+                      priority={idx === 0}
                       className="object-cover group-hover:scale-105 transition-transform duration-500"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                   )}

@@ -19,6 +19,17 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+
+    // Filter out Anime from TMDB results to prevent duplicates with Anilist/Jikan search.
+    // Anime in TMDB usually have original_language = 'ja' and genre_ids including 16 (Animation).
+    if (data.results && Array.isArray(data.results)) {
+      data.results = data.results.filter((item: any) => {
+        const isJapanese = item.original_language === 'ja';
+        const isAnimation = item.genre_ids && Array.isArray(item.genre_ids) && item.genre_ids.includes(16);
+        return !(isJapanese && isAnimation);
+      });
+    }
+
     return NextResponse.json(data);
   } catch (error) {
     console.error('TMDB search proxy error:', error);

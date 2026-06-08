@@ -1,0 +1,414 @@
+﻿Omniflow_Web-2.0/
+│
+├── 📂 .agents/
+│   └── 📁 skills/
+│       ├── 📁 supabase/
+│       │   ├── 📁 assets/
+│       │   │   └── 📖 feedback-issue-template.md
+│       │   ├── 📁 references/
+│       │   │   └── 📖 skill-feedback.md
+│       │   └── 📖 SKILL.md
+│       └── 📁 supabase-postgres-best-practices/
+│           ├── 📁 references/
+│           │   ├── 📖 _contributing.md
+│           │   ├── 📖 _sections.md
+│           │   ├── 📖 _template.md
+│           │   ├── 📖 advanced-full-text-search.md
+│           │   ├── 📖 advanced-jsonb-indexing.md
+│           │   ├── 📖 conn-idle-timeout.md
+│           │   ├── 📖 conn-limits.md
+│           │   ├── 📖 conn-pooling.md
+│           │   ├── 📖 conn-prepared-statements.md
+│           │   ├── 📖 data-batch-inserts.md
+│           │   ├── 📖 data-n-plus-one.md
+│           │   ├── 📖 data-pagination.md
+│           │   ├── 📖 data-upsert.md
+│           │   ├── 📖 lock-advisory.md
+│           │   ├── 📖 lock-deadlock-prevention.md
+│           │   ├── 📖 lock-short-transactions.md
+│           │   ├── 📖 lock-skip-locked.md
+│           │   ├── 📖 monitor-explain-analyze.md
+│           │   ├── 📖 monitor-pg-stat-statements.md
+│           │   ├── 📖 monitor-vacuum-analyze.md
+│           │   ├── 📖 query-composite-indexes.md
+│           │   ├── 📖 query-covering-indexes.md
+│           │   ├── 📖 query-index-types.md
+│           │   ├── 📖 query-missing-indexes.md
+│           │   ├── 📖 query-partial-indexes.md
+│           │   ├── 📖 schema-constraints.md
+│           │   ├── 📖 schema-data-types.md
+│           │   ├── 📖 schema-foreign-key-indexes.md
+│           │   ├── 📖 schema-lowercase-identifiers.md
+│           │   ├── 📖 schema-partitioning.md
+│           │   ├── 📖 schema-primary-keys.md
+│           │   ├── 📖 security-privileges.md
+│           │   ├── 📖 security-rls-basics.md
+│           │   └── 📖 security-rls-performance.md
+│           └── 📖 SKILL.md
+├── 📂 public/
+│   ├── 📄 file.svg
+│   ├── 📄 globe.svg
+│   ├── 📄 next.svg
+│   ├── 📄 placeholder-poster.svg
+│   ├── ⚙️ servers.json
+│   ├── 📄 vercel.svg
+│   └── 📄 window.svg
+├── 📂 src/
+│   ├── 📁 app/
+│   │   ├── 📁 admin/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 anime/
+│   │   │   ├── 📁 [id]/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 api/
+│   │   │   ├── 📁 anilist/
+│   │   │   │   └── 📄 route.ts
+│   │   │   ├── 📁 download/
+│   │   │   │   └── 📄 route.ts
+│   │   │   ├── 📁 jikan/
+│   │   │   │   ├── 📁 [...path]/
+│   │   │   │   ├── 📁 anime/
+│   │   │   │   │   └── 📁 [id]/
+│   │   │   │   ├── 📁 schedules/
+│   │   │   │   │   └── 📄 route.ts
+│   │   │   │   ├── 📁 search/
+│   │   │   │   │   └── 📄 route.ts
+│   │   │   │   └── 📁 top/
+│   │   │   │       └── 📄 route.ts
+│   │   │   ├── 📁 manga/
+│   │   │   │   ├── 📁 chapters/
+│   │   │   │   │   └── 📄 route.ts
+│   │   │   │   └── 📄 route.ts
+│   │   │   ├── 📁 mangaupdates/
+│   │   │   │   └── 📁 search/
+│   │   │   │       └── 📄 route.ts
+│   │   │   ├── 📁 stream/
+│   │   │   │   ├── 📁 proxy/
+│   │   │   │   │   └── 📄 route.ts
+│   │   │   │   ├── 📁 resolve/
+│   │   │   │   │   └── 📄 route.ts
+│   │   │   │   └── 📄 route.ts
+│   │   │   ├── 📁 test-cinepro/
+│   │   │   │   └── 📄 route.ts
+│   │   │   └── 📁 tmdb/
+│   │   │       ├── 📁 movie/
+│   │   │       │   └── 📁 [id]/
+│   │   │       ├── 📁 search/
+│   │   │       │   └── 📄 route.ts
+│   │   │       ├── 📁 trending/
+│   │   │       │   └── 📄 route.ts
+│   │   │       └── 📁 tv/
+│   │   │           └── 📁 [id]/
+│   │   ├── 📁 discover/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 history/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 manga/
+│   │   │   ├── 📁 [id]/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 movies/
+│   │   │   ├── 📁 [id]/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 popular/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 profile/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 read/
+│   │   │   └── 📁 [id]/
+│   │   ├── 📁 search/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 season/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 settings/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 top-rated/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 trending/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 tv/
+│   │   │   ├── 📁 [id]/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 upcoming/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 watch/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📁 watchlist/
+│   │   │   └── 📄 page.tsx
+│   │   ├── 📄 favicon.ico
+│   │   ├── 🎨 globals.css
+│   │   ├── 📄 layout.tsx
+│   │   ├── 📄 loading.tsx
+│   │   ├── 📄 not-found.tsx
+│   │   └── 📄 page.tsx
+│   ├── 📁 components/
+│   │   ├── 📁 admin/
+│   │   │   └── 📄 AdsManager.tsx
+│   │   ├── 📁 auth/
+│   │   │   ├── 📄 AuthModal.tsx
+│   │   │   └── 📄 AuthProvider.tsx
+│   │   ├── 📁 details/
+│   │   │   ├── 📄 CharactersTab.tsx
+│   │   │   ├── 📄 DetailHeader.tsx
+│   │   │   ├── 📄 EpisodesTab.tsx
+│   │   │   ├── 📄 MoreLikeThisTab.tsx
+│   │   │   ├── 📄 OverviewTab.tsx
+│   │   │   ├── 📄 RelatedTab.tsx
+│   │   │   └── 📄 TVSeasonView.tsx
+│   │   ├── 📁 home/
+│   │   │   ├── 📄 ContinueWatching.tsx
+│   │   │   ├── 📄 HeroBanner.tsx
+│   │   │   ├── 📄 RecentComments.tsx
+│   │   │   ├── 📄 RecentlyUpdated.tsx
+│   │   │   ├── 📄 ScheduleWidget.tsx
+│   │   │   ├── 📄 TabbedGrid.tsx
+│   │   │   ├── 📄 TopUpcoming.tsx
+│   │   │   └── 📄 TrendingRow.tsx
+│   │   ├── 📁 layout/
+│   │   │   ├── 📄 MobileNav.tsx
+│   │   │   ├── 📄 QuickSearch.tsx
+│   │   │   ├── 📄 Sidebar.tsx
+│   │   │   ├── 📄 ThemeManager.tsx
+│   │   │   └── 📄 Topbar.tsx
+│   │   ├── 📁 media/
+│   │   │   ├── 📄 HoverCard.tsx
+│   │   │   ├── 📄 MediaCard.tsx
+│   │   │   ├── 📄 MediaGrid.tsx
+│   │   │   ├── 📄 MediaRow.tsx
+│   │   │   ├── 📄 SkeletonCard.tsx
+│   │   │   └── 📄 TypeBadge.tsx
+│   │   ├── 📁 player/
+│   │   │   ├── 📄 DownloadModal.tsx
+│   │   │   ├── 📄 EpisodeSidebar.tsx
+│   │   │   ├── 📄 GoogleImaAdPlayer.tsx
+│   │   │   ├── 📄 RecentlyUploaded.tsx
+│   │   │   ├── 📄 ServerSwitcher.tsx
+│   │   │   └── 📄 VideoPlayer.tsx
+│   │   └── 📁 ui/
+│   │       ├── 📄 ImageWithFallback.tsx
+│   │       ├── 📄 LoadingSpinner.tsx
+│   │       ├── 📄 Modal.tsx
+│   │       ├── 📄 Portal.tsx
+│   │       └── 📄 Tabs.tsx
+│   ├── 📁 hooks/
+│   │   └── 📄 useHotSwap.ts
+│   ├── 📁 lib/
+│   │   ├── 📁 api/
+│   │   │   ├── 📄 anilist.ts
+│   │   │   ├── 📄 hybrid.ts
+│   │   │   ├── 📄 jikan.ts
+│   │   │   ├── 📄 mangaupdates.ts
+│   │   │   └── 📄 tmdb.ts
+│   │   ├── 📁 cache/
+│   │   │   ├── 📄 ephemeral-cache.ts
+│   │   │   ├── 📄 memory.ts
+│   │   │   ├── 📄 redis.ts
+│   │   │   └── 📄 supabase-cache.ts
+│   │   ├── 📁 consumet/
+│   │   │   ├── 📁 extractors/
+│   │   │   │   ├── 📄 asianload.ts
+│   │   │   │   ├── 📄 bilibili.ts
+│   │   │   │   ├── 📄 filemoon.ts
+│   │   │   │   ├── 📄 gogocdn.ts
+│   │   │   │   ├── 📄 index.ts
+│   │   │   │   ├── 📄 kwik.ts
+│   │   │   │   ├── 📄 megacloud.ts
+│   │   │   │   ├── 📄 mixdrop.ts
+│   │   │   │   ├── 📄 mp4player.ts
+│   │   │   │   ├── 📄 mp4upload.ts
+│   │   │   │   ├── 📄 rabbit.ts
+│   │   │   │   ├── 📄 rapidcloud.ts
+│   │   │   │   ├── 📄 smashystream.ts
+│   │   │   │   ├── 📄 streamhub.ts
+│   │   │   │   ├── 📄 streamlare.ts
+│   │   │   │   ├── 📄 streamsb.ts
+│   │   │   │   ├── 📄 streamtape.ts
+│   │   │   │   ├── 📄 streamwish.ts
+│   │   │   │   ├── 📄 vidcloud.ts
+│   │   │   │   ├── 📄 vidmoly.ts
+│   │   │   │   ├── 📄 vizcloud.ts
+│   │   │   │   └── 📄 voe.ts
+│   │   │   ├── 📁 models/
+│   │   │   │   ├── 📄 anime-parser.ts
+│   │   │   │   ├── 📄 base-parser.ts
+│   │   │   │   ├── 📄 base-provider.ts
+│   │   │   │   ├── 📄 base-types.ts
+│   │   │   │   ├── 📄 book-parser.ts
+│   │   │   │   ├── 📄 comic-parser.ts
+│   │   │   │   ├── 📄 index.ts
+│   │   │   │   ├── 📄 lightnovel-parser.ts
+│   │   │   │   ├── 📄 manga-parser.ts
+│   │   │   │   ├── 📄 movie-parser.ts
+│   │   │   │   ├── 📄 news-parser.ts
+│   │   │   │   ├── 📄 proxy.ts
+│   │   │   │   ├── 📄 type-objects.ts
+│   │   │   │   ├── 📄 types.ts
+│   │   │   │   └── 📄 video-extractor.ts
+│   │   │   ├── 📁 providers/
+│   │   │   │   ├── 📁 anime/
+│   │   │   │   │   ├── 📄 9anime.ts
+│   │   │   │   │   ├── 📄 anify.ts
+│   │   │   │   │   ├── 📄 animedrive.ts
+│   │   │   │   │   ├── 📄 animefox.ts
+│   │   │   │   │   ├── 📄 animepahe.ts
+│   │   │   │   │   ├── 📄 animesaturn.ts
+│   │   │   │   │   ├── 📄 animeunity.ts
+│   │   │   │   │   ├── 📄 bilibili.ts
+│   │   │   │   │   ├── 📄 crunchyroll.ts
+│   │   │   │   │   ├── 📄 gogoanime.ts
+│   │   │   │   │   ├── 📄 index.ts
+│   │   │   │   │   ├── 📄 kickassanime.ts
+│   │   │   │   │   ├── 📄 marin.ts
+│   │   │   │   │   ├── 📄 monoschinos.ts
+│   │   │   │   │   └── 📄 zoro.ts
+│   │   │   │   ├── 📁 books/
+│   │   │   │   │   ├── 📄 index.ts
+│   │   │   │   │   └── 📄 libgen.ts
+│   │   │   │   ├── 📁 comics/
+│   │   │   │   │   ├── 📄 getComics.ts
+│   │   │   │   │   └── 📄 index.ts
+│   │   │   │   ├── 📁 light-novels/
+│   │   │   │   │   ├── 📄 index.ts
+│   │   │   │   │   ├── 📄 novelupdates.ts
+│   │   │   │   │   └── 📄 readlightnovels.ts
+│   │   │   │   ├── 📁 manga/
+│   │   │   │   │   ├── 📄 asurascans.ts
+│   │   │   │   │   ├── 📄 brmangas.ts
+│   │   │   │   │   ├── 📄 comick.ts
+│   │   │   │   │   ├── 📄 flamescans.ts
+│   │   │   │   │   ├── 📄 index.ts
+│   │   │   │   │   ├── 📄 mangadex.ts
+│   │   │   │   │   ├── 📄 mangahere.ts
+│   │   │   │   │   ├── 📄 mangahost.ts
+│   │   │   │   │   ├── 📄 mangakakalot.ts
+│   │   │   │   │   ├── 📄 mangapark.ts
+│   │   │   │   │   ├── 📄 mangapill.ts
+│   │   │   │   │   ├── 📄 mangareader.ts
+│   │   │   │   │   ├── 📄 mangasee123.ts
+│   │   │   │   │   ├── 📄 readmanga.ts
+│   │   │   │   │   └── 📄 vyvymanga.ts
+│   │   │   │   ├── 📁 meta/
+│   │   │   │   │   ├── 📄 anilist.ts
+│   │   │   │   │   ├── 📄 index.ts
+│   │   │   │   │   ├── 📄 mal.ts
+│   │   │   │   │   └── 📄 tmdb.ts
+│   │   │   │   ├── 📁 movies/
+│   │   │   │   │   ├── 📄 dramacool.ts
+│   │   │   │   │   ├── 📄 flixhq.ts
+│   │   │   │   │   ├── 📄 fmovies.ts
+│   │   │   │   │   ├── 📄 goku.ts
+│   │   │   │   │   ├── 📄 index.ts
+│   │   │   │   │   ├── 📄 kissasian.ts
+│   │   │   │   │   ├── 📄 movidhdwatch.ts
+│   │   │   │   │   ├── 📄 smashystream.ts
+│   │   │   │   │   ├── 📄 turkish123.ts
+│   │   │   │   │   ├── 📄 ummagurau.ts
+│   │   │   │   │   └── 📄 viewAsian.ts
+│   │   │   │   ├── 📁 news/
+│   │   │   │   │   ├── 📄 animenewsnetwork.ts
+│   │   │   │   │   └── 📄 index.ts
+│   │   │   │   ├── 📁 others/
+│   │   │   │   │   └── 📄 index.ts
+│   │   │   │   └── 📄 index.ts
+│   │   │   ├── 📁 utils/
+│   │   │   │   ├── 📄 getComics.ts
+│   │   │   │   ├── 📄 index.ts
+│   │   │   │   ├── 📄 providers-list.ts
+│   │   │   │   ├── 📄 queries.ts
+│   │   │   │   └── 📄 utils.ts
+│   │   │   └── 📄 index.ts
+│   │   ├── 📁 extraction/
+│   │   │   ├── 📁 cinepro-providers/
+│   │   │   │   ├── 📁 utils/
+│   │   │   │   │   ├── 📄 jsunpack.ts
+│   │   │   │   │   └── 📄 ua.ts
+│   │   │   │   ├── 📁 vidapi/
+│   │   │   │   │   ├── 📄 vidapi.ts
+│   │   │   │   │   └── 📄 vidapi.types.ts
+│   │   │   │   ├── 📁 vidlink/
+│   │   │   │   │   └── 📄 vidlink.ts
+│   │   │   │   ├── 📁 vidnest/
+│   │   │   │   │   ├── 📄 decrypt.ts
+│   │   │   │   │   ├── 📄 vidnest.ts
+│   │   │   │   │   └── 📄 vidnest.types.ts
+│   │   │   │   └── 📁 vidsrc/
+│   │   │   │       └── 📄 vidsrc.ts
+│   │   │   ├── 📄 aggregator.service.ts
+│   │   │   ├── 📄 anime-extraction.service.ts
+│   │   │   ├── 📄 cinepro-aggregator.ts
+│   │   │   ├── 📄 circuit-breaker.ts
+│   │   │   ├── 📄 desidubanime-extractor.ts
+│   │   │   ├── 📄 embed-provider-aggregator.ts
+│   │   │   ├── 📄 extraction-config.ts
+│   │   │   ├── 📄 hindidubbed-extractor.ts
+│   │   │   ├── 📄 index.ts
+│   │   │   ├── 📄 manga-extraction.service.ts
+│   │   │   ├── 📄 moviebox-extractor.ts
+│   │   │   ├── 📄 movie-extraction.service.ts
+│   │   │   ├── 📄 playwright-extractor.ts
+│   │   │   ├── 📄 provider-registry.ts
+│   │   │   ├── 📄 query-expander.ts
+│   │   │   ├── 📄 rate-limiter.ts
+│   │   │   ├── 📄 stealth-client.ts
+│   │   │   ├── 📄 stremio-extractor.ts
+│   │   │   ├── 📄 string-matching.ts
+│   │   │   ├── 📄 subtitle.service.ts
+│   │   │   ├── 📄 ultimate-aggregator.ts
+│   │   │   └── 📄 universal-aggregator.service.ts
+│   │   ├── 📁 hooks/
+│   │   │   ├── 📄 useDebounce.ts
+│   │   │   ├── 📄 useIntersectionObserver.ts
+│   │   │   ├── 📄 useLocalStorage.ts
+│   │   │   └── 📄 useMediaQuery.ts
+│   │   ├── 📁 utils/
+│   │   │   ├── 📄 cn.ts
+│   │   │   ├── 📄 formatters.ts
+│   │   │   └── 📄 serverBuilder.ts
+│   │   ├── 📄 logger.ts
+│   │   ├── 📄 queryClient.tsx
+│   │   └── 📄 supabase.ts
+│   ├── 📁 store/
+│   │   ├── 📄 playerStore.ts
+│   │   ├── 📄 uiStore.ts
+│   │   └── 📄 userStore.ts
+│   ├── 📁 types/
+│   │   ├── 📄 anilist.ts
+│   │   ├── 📄 extraction-types.ts
+│   │   ├── 📄 jikan.ts
+│   │   ├── 📄 media.ts
+│   │   ├── 📄 server.ts
+│   │   └── 📄 tmdb.ts
+│   └── 📁 utils/
+│       └── 📁 supabase/
+│           ├── 📄 client.ts
+│           ├── 📄 middleware.ts
+│           └── 📄 server.ts
+├── 📂 supabase/
+│   ├── 📁 migrations/
+│   │   ├── 📄 20260528000000_schema_setup.sql
+│   │   ├── 📄 20260531000000_add_role_to_profiles.sql
+│   │   ├── 📄 20260531000000_add_user_roles.sql
+│   │   ├── 📄 20260531000001_get_email_by_username.sql
+│   │   ├── 📄 20260531000002_fix_rls_recursion.sql
+│   │   ├── 📄 20260601000000_nuclear_reset.sql
+│   │   ├── 📄 20260601000001_media_ads.sql
+│   │   ├── 📄 20260604000000_ephemeral_streams.sql
+│   │   └── 📄 20260605000001_video_and_global_ads.sql
+│   ├── 📄 run_now_media_ads.sql
+│   └── 📄 set_admin.sql
+├── ⚙️ .gitignore
+├── 📖 AGENTS.md
+├── 📖 CLAUDE.md
+├── 📄 eslint.config.mjs
+├── 📄 extract.ps1
+├── 💻 GenerateVisualTree.bat
+├── 📄 next.config.ts
+├── ⚙️ package.json
+├── ⚙️ package-lock.json
+├── 📄 postcss.config.mjs
+├── 📖 README.md
+├── 📜 scratch_request.js
+├── ⚙️ skills-lock.json
+├── 📄 test.ps1
+├── ⚙️ test_output.json
+├── ⚙️ tsconfig.json
+├── 📄 VideoPlayer_old.tsx

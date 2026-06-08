@@ -190,8 +190,8 @@ export default function OverviewTab({ media }: OverviewTabProps) {
             )}
           </div>
           <div className="space-y-2">
-            {displayCharacters.map((char) => (
-              <div key={char.id} className="flex items-center justify-between bg-surface rounded-lg p-3 border border-border">
+            {displayCharacters.map((char, idx) => (
+              <div key={`${char.id}-${idx}`} className="flex items-center justify-between bg-surface rounded-lg p-3 border border-border">
                 <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-void shrink-0">
                     <Image src={char.image} alt={char.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
@@ -233,8 +233,8 @@ export default function OverviewTab({ media }: OverviewTabProps) {
             )}
           </div>
           <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
-            {displayStaff.map((s) => (
-              <div key={s.id} className="shrink-0 w-[100px] text-center">
+            {displayStaff.map((s, idx) => (
+              <div key={`${s.id}-${idx}`} className="shrink-0 w-[100px] text-center">
                 <div className="relative w-20 h-24 rounded-lg overflow-hidden bg-surface mx-auto mb-2">
                    <Image src={s.image} alt={s.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                 </div>

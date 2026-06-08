@@ -229,9 +229,9 @@ function WatchContent() {
         <span className="text-white truncate">{title}</span>
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-6 items-start">
-        {/* Left Column: Player & Detail Ecosystem */}
-        <div className="flex-1 min-w-0 w-full space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6 items-start">
+        {/* Top/Left Section: Player & Detail Ecosystem */}
+        <div className="w-full space-y-4">
           {/* Main Integrated Video Player */}
           <div className="rounded-xl overflow-hidden border border-border shadow-2xl bg-void">
             <VideoPlayer
@@ -406,8 +406,23 @@ function WatchContent() {
               {isDescriptionExpanded ? 'Show less' : 'Click to expand description'}
             </span>
           </div>
+        </div>
 
+        {/* Right Column / Mobile Middle: Integrated Up Next Sidebar */}
+        <div className="w-full xl:row-span-2">
+          <EpisodeSidebar
+            mediaId={rawId}
+            mediaType={mediaType}
+            currentEp={epNum}
+            totalEpisodes={mediaType === 'anime' ? ((media as any)?.episodes || ((media as any)?.nextAiringEpisode?.episode ? (media as any).nextAiringEpisode.episode - 1 : 12)) : (media as any)?.number_of_episodes || 1}
+            title={title}
+            nextAiringEpisode={(media as any)?.nextAiringEpisode}
+            recommendations={recommendations}
+          />
+        </div>
 
+        {/* Bottom Section: Reviews & Recently Updated */}
+        <div className="w-full space-y-4 xl:col-start-1 xl:row-start-2">
           {/* Reviews Discussion Ecosystem */}
           {(!reviewsLoading && reviews.length > 0) ? (
             <div className="bg-void rounded-xl border border-border/80 p-4 space-y-4">
@@ -459,7 +474,7 @@ function WatchContent() {
                           <span className="text-xs font-bold text-white">{authorName}</span>
                           {date && <span className="text-[10px] text-text-muted">{new Date(date).toLocaleDateString()}</span>}
                         </div>
-                        <p className="text-xs text-text-secondary mb-2 line-clamp-4 hover:line-clamp-none transition-all">
+                        <p className="text-xs text-text-secondary mb-2 line-clamp-4">
                           {content.replace(/<[^>]*>?/gm, '')}
                         </p>
                         <div className="flex items-center gap-4 text-xs text-text-muted">
@@ -485,23 +500,9 @@ function WatchContent() {
             )
           )}
 
-          {/* Recently Updated Block */}
-          <div className="pt-8">
+          <div className="pt-4">
             <RecentlyUpdated />
           </div>
-        </div>
-
-        {/* Right Column: Integrated Up Next Sidebar */}
-        <div className="w-full xl:w-[380px] shrink-0">
-          <EpisodeSidebar
-            mediaId={rawId}
-            mediaType={mediaType}
-            currentEp={epNum}
-            totalEpisodes={mediaType === 'anime' ? ((media as any)?.episodes || ((media as any)?.nextAiringEpisode?.episode ? (media as any).nextAiringEpisode.episode - 1 : 12)) : (media as any)?.number_of_episodes || 1}
-            title={title}
-            nextAiringEpisode={(media as any)?.nextAiringEpisode}
-            recommendations={recommendations}
-          />
         </div>
       </div>
 

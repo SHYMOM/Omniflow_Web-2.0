@@ -194,69 +194,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // ─── FALLBACK TO EMBED IFRAMES ─────────────────────────────
-    const cleanId = id
-      .replace('tmdb-movie-', '')
-      .replace('tmdb-tv-', '')
-      .replace('anilist-', '')
-      .replace('mal-', '');
-
-    const embedId = imdbId || (cleanId.startsWith('tt') ? cleanId : undefined);
-
-    let iframeUrl = '';
-    const fallbackIframes: { name: string, url: string }[] = [];
-
-    if (mediaType === 'movie') {
-      iframeUrl = embedId 
-        ? `https://vidsrc.cc/v2/embed/movie/${embedId}` 
-        : `https://vidsrc.to/embed/movie/${cleanId}`;
-        
-      if (embedId) {
-        fallbackIframes.push(
-          { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/movie/${embedId}` },
-          { name: 'Embed.su', url: `https://embed.su/embed/movie/${embedId}` },
-          { name: 'MultiEmbed.mov', url: `https://multiembed.mov/?video_id=${embedId}&tmdb=1` },
-          { name: '2Embed.cc', url: `https://2embed.cc/embed/${embedId}` },
-          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/movie/${cleanId}` }
-        );
-      } else {
-        fallbackIframes.push(
-          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/movie/${cleanId}` },
-          { name: 'VidSrc.me', url: `https://vidsrc.me/embed/movie/${cleanId}` }
-        );
-      }
-    } else if (mediaType === 'tv') {
-      iframeUrl = embedId
-        ? `https://vidsrc.cc/v2/embed/tv/${embedId}/${season}/${episode}`
-        : `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}`;
-        
-      if (embedId) {
-        fallbackIframes.push(
-          { name: 'VidSrc.cc', url: `https://vidsrc.cc/v2/embed/tv/${embedId}/${season}/${episode}` },
-          { name: 'Embed.su', url: `https://embed.su/embed/tv/${embedId}/${season}/${episode}` },
-          { name: 'MultiEmbed.mov', url: `https://multiembed.mov/?video_id=${embedId}&tmdb=1&s=${season}&e=${episode}` },
-          { name: '2Embed.cc', url: `https://2embed.cc/embedtv/${embedId}&s=${season}&e=${episode}` },
-          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}` }
-        );
-      } else {
-        fallbackIframes.push(
-          { name: 'VidSrc.to', url: `https://vidsrc.to/embed/tv/${cleanId}/${season}/${episode}` },
-          { name: 'VidSrc.me', url: `https://vidsrc.me/embed/tv/${cleanId}/${season}/${episode}` }
-        );
-      }
-    } else if (mediaType === 'anime') {
-      iframeUrl = `https://vidsrc.to/embed/anime/${cleanId}/${episode}`;
-      fallbackIframes.push(
-        { name: 'VidSrc.to', url: `https://vidsrc.to/embed/anime/${cleanId}/${episode}` },
-        { name: 'VidSrc.me', url: `https://vidsrc.me/embed/anime/${cleanId}/${episode}` }
-      );
-    }
-
     return NextResponse.json<StreamApiResponse>({
       success: false,
-      source: 'iframe',
-      iframeUrl: iframeUrl || undefined,
-      availableStreams: fallbackIframes as any // Pass fallback iframes to the frontend just in case
+      source: 'direct'
     }, {
       headers: {
         'X-Stream-Resolve-Time': `${Date.now() - startTime}ms`
@@ -266,7 +206,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('[API /stream] Unhandled service error:', error?.message || error);
     return NextResponse.json<StreamApiResponse>(
-      { success: false, source: 'iframe' },
+      { success: false, source: 'direct' },
       { status: 500 }
     );
   }
