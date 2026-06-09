@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { id } = await params;
     const response = await fetch(
-      `${TMDB_BASE}/tv/${id}?api_key=${TMDB_KEY}&language=en-US&append_to_response=credits,videos,similar,recommendations`,
+      `${TMDB_BASE}/tv/${id}?api_key=${TMDB_KEY}&language=en-US&append_to_response=credits,videos,similar,recommendations,images`,
       { next: { revalidate: 3600 } }
     );
 

@@ -19,7 +19,8 @@ export default function MoreLikeThisTab({ media }: MoreLikeThisTabProps) {
             if (seen.has(rec.id)) return null;
             seen.add(rec.id);
 
-            const href = `/${rec.type}/${rec.id}`;
+            const routeType = rec.type === 'movie' ? 'movies' : rec.type;
+            const href = `/${routeType}/${rec.id}`;
             return (
               <Link key={`${rec.id}-${idx}`} href={href} className="group">
                 <div className="relative aspect-[3/4] rounded-lg overflow-hidden bg-surface mb-1.5 border border-border/30">

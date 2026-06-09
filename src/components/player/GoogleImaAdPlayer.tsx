@@ -44,6 +44,13 @@ export default function GoogleImaAdPlayer({
     let mounted = true;
     
     const fetchCustomAd = async () => {
+      const adTimeout = setTimeout(() => {
+        if (mounted && adStatus === 'loading') {
+          console.warn('Ad resolution timed out, skipping to video playback.');
+          handleSkipOrComplete();
+        }
+      }, 2500);
+
       try {
         // 1. Check if global ads are disabled
         const { data: settingsData } = await supabase
@@ -53,6 +60,7 @@ export default function GoogleImaAdPlayer({
           .single();
           
         if (settingsData && (settingsData.value === 'false' || settingsData.value === false)) {
+          clearTimeout(adTimeout);
           if (mounted) handleSkipOrComplete();
           return;
         }
@@ -81,6 +89,7 @@ export default function GoogleImaAdPlayer({
           adData = data;
         }
 
+        clearTimeout(adTimeout);
         if (adData && mounted) {
           setCustomAdData(adData);
           setAdStatus('custom_ad');
@@ -89,6 +98,7 @@ export default function GoogleImaAdPlayer({
           if (mounted) handleSkipOrComplete();
         }
       } catch (err) {
+        clearTimeout(adTimeout);
         console.error('Failed to fetch custom ads', err);
         if (mounted) handleSkipOrComplete();
       }

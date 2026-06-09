@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
 const JIKAN_BASE = process.env.JIKAN_BASE_URL || 'https://api.jikan.moe/v4';
 
@@ -11,13 +12,15 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const page = searchParams.get('page') || '1';
 
-    const response = await fetch(`${JIKAN_BASE}/anime/${id}/episodes?page=${page}`, { next: { revalidate: 3600 } });
-    if (!response.ok) return NextResponse.json({ error: 'Jikan API error' }, { status: response.status });
+    const response = await axios.get(`${JIKAN_BASE}/anime/${id}/episodes?page=${page}`, { 
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      }
+    });
 
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (error) {
+    return NextResponse.json(response.data);
+  } catch (error: any) {
     console.error('Jikan episodes proxy error:', error);
-    return NextResponse.json({ error: 'Internal proxy error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal proxy error', details: error.message, stack: error.stack }, { status: 500 });
   }
 }

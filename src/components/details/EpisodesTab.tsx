@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Play, ChevronLeft, ChevronRight, LayoutGrid, List, ArrowUpDown, Clock } from 'lucide-react';
 import type { AniListMedia } from '@/types/anilist';
 import type { MediaItem } from '@/types/media';
-import { getMediaEpisodes } from '@/lib/api/hybrid';
+import { fetchMediaEpisodesAction } from '@/lib/actions/episodes';
 import { cn } from '@/lib/utils/cn';
 
 interface EpisodesTabProps { media: MediaItem; rawMedia: AniListMedia; }
@@ -17,10 +18,13 @@ const EPISODES_PER_PAGE = 24;
 export default function EpisodesTab({ media }: EpisodesTabProps) {
   const [page, setPage] = useState(1);
   const [sortAsc, setSortAsc] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isDesc, setIsDesc] = useState(false);
+  const router = useRouter();
 
-  const { data: episodes, isLoading } = useQuery({
-    queryKey: [media.type, media.id, 'episodes'],
-    queryFn: () => getMediaEpisodes(String(media.id), media.type || 'anime'),
+  const { data: episodes = [], isLoading } = useQuery({
+    queryKey: ['episodes', media.id],
+    queryFn: () => fetchMediaEpisodesAction(String(media.id), media.type || 'anime'),
     enabled: !!media.id,
   });
 

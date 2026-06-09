@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Search, RefreshCw, ArrowUpDown, LayoutList, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
-import { getMediaEpisodes } from '@/lib/api/hybrid';
+import { fetchMediaEpisodesAction } from '@/lib/actions/episodes';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface Episode {
@@ -46,7 +46,7 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
     async function load() {
       setLoading(true);
       try {
-        const data = await getMediaEpisodes(mediaId, mediaType);
+        const data = await fetchMediaEpisodesAction(mediaId, mediaType);
         setEpisodes(data);
       } catch (err) {
         console.error('Failed to load episodes', err);
@@ -266,15 +266,18 @@ export default function EpisodeSidebar({ mediaId, mediaType, currentEp, totalEpi
         <div className="pt-4 space-y-3">
           <h3 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-1">More Like This</h3>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-3 gap-3">
-            {recommendations.slice(0, 6).map((rec) => (
-              <Link key={rec.id} href={`/${rec.type}/${rec.id}`} className="group">
+            {recommendations.slice(0, 6).map((rec) => {
+              const routeType = rec.type === 'movie' ? 'movies' : rec.type;
+              return (
+              <Link key={rec.id} href={`/${routeType}/${rec.id}`} className="group">
                 <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-surface mb-1.5 border border-border/30 group-hover:border-accent-green/50 transition-all">
                   <Image src={rec.posterUrl} alt={rec.title} fill className="object-cover group-hover:scale-105 transition-transform" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                 </div>
                 <p className="text-[9px] text-text-muted uppercase font-bold tracking-tighter truncate">{rec.formatLabel}</p>
                 <p className="text-[10px] text-white font-bold line-clamp-1 group-hover:text-accent-green transition-colors leading-tight">{rec.title}</p>
               </Link>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

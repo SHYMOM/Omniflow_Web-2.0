@@ -194,6 +194,28 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    let tmdbId = id.includes('tmdb') ? id.replace('tmdb-movie-', '').replace('tmdb-tv-', '') : undefined;
+    if (!tmdbId && imdbId) tmdbId = imdbId;
+
+    if (tmdbId && (mediaType === 'movie' || mediaType === 'tv' || mediaType === 'kdrama')) {
+      let iframeUrl = '';
+      if (mediaType === 'movie') {
+        iframeUrl = `https://vidsrc.cc/v2/embed/movie/${tmdbId}`;
+      } else {
+        iframeUrl = `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`;
+      }
+      return NextResponse.json<StreamApiResponse>({
+        success: true,
+        source: 'iframe',
+        iframeUrl,
+        provider: 'vidsrc',
+      }, {
+        headers: {
+          'X-Stream-Resolve-Time': `${Date.now() - startTime}ms`
+        }
+      });
+    }
+
     return NextResponse.json<StreamApiResponse>({
       success: false,
       source: 'direct'
