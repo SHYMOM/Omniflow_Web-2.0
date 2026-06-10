@@ -13,7 +13,6 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUserStore } from '@/store/userStore';
 import { fetchMediaEpisodesAction } from '@/lib/actions/episodes';
-import { UniversalAggregator } from '@/lib/extraction/universal-aggregator.service';
 import GoogleImaAdPlayer from './GoogleImaAdPlayer';
 import DownloadModal from './DownloadModal';
 
@@ -79,6 +78,10 @@ function getUniqueSubtitles(subs: StreamSubtitle[]): StreamSubtitle[] {
 export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season, mediaTitle, imdbId }: VideoPlayerProps) {
   const router = useRouter();
   const { 
+    sources, activeSourceIndex, switchSource,
+    subtitles: storeSubtitles, setSubtitles: setStoreSubtitles,
+    activeSubtitleLang, setActiveSubtitle: setStoreActiveSubtitle,
+    showDownloadModal, setShowDownloadModal,
     activeServerId, setActiveServer, setDownloadUrl, setAvailableLanguages,
     availableStreams, setAvailableStreams,
     externalSubtitles, setExternalSubtitles,
@@ -139,6 +142,18 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const [subtitleDelay, setSubtitleDelay] = useState(0);
   const [loadingText, setLoadingText] = useState('Resolving premium streams...');
 
+  // Skip Intro/Outro (AniSkip) state
+  const [skipTimes, setSkipTimes] = useState<{ introStart: number; introEnd: number; outroStart?: number; outroEnd?: number } | null>(null);
+  const [skipBtnVisible, setSkipBtnVisible] = useState<'intro' | 'outro' | null>(null);
+  const [skipBtnAlwaysVisible, setSkipBtnAlwaysVisible] = useState(false);
+  const skipIntroEnteredAt = useRef<number | null>(null);
+
+  // Next Episode countdown state
+  const [showNextEpOverlay, setShowNextEpOverlay] = useState(false);
+  const [nextEpCountdown, setNextEpCountdown] = useState(5);
+  const nextEpCountdownRef = useRef<NodeJS.Timeout | null>(null);
+  const nextEpCancelledRef = useRef(false);
+
   // Hot swap persistence
   const hotSwapTimeRef = useRef<number | null>(null);
   const hotSwapRateRef = useRef<number>(1);
@@ -160,6 +175,20 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const HLS_MAX_RETRIES = 3;
 
   const [resolvedTmdbId, setResolvedTmdbId] = useState<number | null>(tmdbId);
+
+  // Fetch AniSkip times when malId + episode change
+  useEffect(() => {
+    if (!malId || mediaType !== 'anime') {
+      setSkipTimes(null);
+      return;
+    }
+    setSkipTimes(null);
+    import('@/lib/extraction/aniskip.service').then(({ AniSkipService }) => {
+      AniSkipService.fetchSkipTimes(malId, episode).then(data => {
+        if (data) setSkipTimes(data);
+      }).catch(console.warn);
+    });
+  }, [malId, episode, mediaType]);
 
   // Auto-Fallback Engine: Tries the NEXT stream of the SAME language if one fails
   const attemptAutoFallback = useCallback(() => {
@@ -215,11 +244,10 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       hlsRef.current = null;
     }
 
-    setCurrentLanguage(lang);
     setActiveMenu(null);
     setIsLoading(true);
     setStreamUrl(url);
-  }, [setCurrentLanguage, setHotSwapToast]);
+  }, []);
 
   // 1. Fetch real TMDB ID for Anime
   useEffect(() => {
@@ -371,48 +399,97 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         const titleParam = mediaTitle ? `&title=${encodeURIComponent(mediaTitle)}` : '';
         const imdbParam = imdbId ? `&imdbId=${imdbId}` : '';
         
-        const res = await fetch(`/api/stream?type=${mediaType}&id=${id}&episode=${episode}&season=${season}${dubbedParam}${langParam}${titleParam}${imdbParam}`);
-        const data = await res.json();
-        
-        if (active) {
-          if (data.success && data.source === 'iframe' && data.iframeUrl) {
-            setIframeUrl(data.iframeUrl);
-            setStreamUrl(null);
-            setIsLoading(false);
-            return;
-          } else if (data.success && data.url) {
-            setStreamUrl(data.url);
-            setIframeUrl(null);
-            setDownloadUrl(data.downloadUrl || data.url);
-            const uniqueSubs = data.subtitles ? getUniqueSubtitles(data.subtitles) : [];
-            setSubtitles(uniqueSubs);
-            loadedKeyRef.current = currentKey;
-            
-            if (data.availableStreams && data.availableStreams.length > 0) {
-              setAvailableStreams(data.availableStreams);
+        const response = await fetch(`/api/stream?type=${mediaType}&id=${id}&episode=${episode}&season=${season}${dubbedParam}${langParam}${titleParam}${imdbParam}`);
+        if (!response.body) throw new Error("No response body");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!active) {
+            reader.cancel();
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const lines = part.split('\n');
+            let event = '';
+            let data: any = null;
+
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                event = line.replace('event: ', '').trim();
+              } else if (line.startsWith('data: ')) {
+                try {
+                  data = JSON.parse(line.replace('data: ', '').trim());
+                } catch (e) {
+                  // ignore
+                }
+              }
             }
-            if (data.availableLanguages && data.availableLanguages.length > 0) {
-               setBackendLangs(data.availableLanguages);
-               setAvailableLanguages(data.availableLanguages);
-            }
-            
-            const defaultSub = uniqueSubs.find((s: any) => s.default);
-            if (defaultSub) setActiveSubtitle(defaultSub.lang);
-          } else {
-            if (currentLanguage !== 'sub') {
-              console.warn(`Dub not found! Switching back to sub...`);
-              setCurrentLanguage('sub');
-              return;
-            } else {
-              setHasFatalError(true);
+
+            if (event && data) {
+              if (event === 'init') {
+                setLoadingText(typeof data === 'string' ? data : 'Resolving premium streams...');
+              } else if (event === 'provider_success') {
+                setLoadingText(`Found streams from ${data.provider || 'provider'}...`);
+              } else if (event === 'done') {
+                if (active) {
+                  if (data.success && data.source === 'iframe' && data.iframeUrl) {
+                    setIframeUrl(data.iframeUrl);
+                    setStreamUrl(null);
+                    setIsLoading(false);
+                    setAdActive(false);
+                    return;
+                  } else if (data.success && data.url) {
+                    setStreamUrl(data.url);
+                    setIframeUrl(null);
+                    setDownloadUrl(data.downloadUrl || data.url);
+                    const uniqueSubs = data.subtitles ? getUniqueSubtitles(data.subtitles) : [];
+                    setSubtitles(uniqueSubs);
+                    loadedKeyRef.current = currentKey;
+                    
+                    if (data.availableStreams && data.availableStreams.length > 0) {
+                      setAvailableStreams(data.availableStreams);
+                    }
+                    if (data.availableLanguages && data.availableLanguages.length > 0) {
+                       setBackendLangs(data.availableLanguages);
+                       setAvailableLanguages(data.availableLanguages);
+                    }
+                    
+                    const defaultSub = uniqueSubs.find((s: any) => s.default);
+                    if (defaultSub) setActiveSubtitle(defaultSub.lang);
+                    setIsLoading(false);
+                    return;
+                  } else {
+                    if (currentLanguage !== 'sub') {
+                      console.warn(`Dub not found! Switching back to sub...`);
+                      setCurrentLanguage('sub');
+                      setAdActive(false);
+                      return;
+                    } else {
+                      setHasFatalError(true);
+                      setAdActive(false);
+                    }
+                    setIsLoading(false);
+                  }
+                }
+              }
             }
           }
-          setIsLoading(false);
         }
       } catch (err) {
         if (active) {
           setHasFatalError(true);
           setIsLoading(false);
+          setAdActive(false);
         }
       }
     };
@@ -614,6 +691,41 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
     return () => clearTimeout(timer);
   }, [activeSubtitle, subtitles, streamUrl]);
+
+  // Apply subtitle delay offset to active text track cues dynamically (p-stream-inspired)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const activeTrack = Array.from(video.textTracks).find(t => t.mode === 'showing');
+    if (!activeTrack) return;
+
+    const delaySec = subtitleDelay;
+
+    const applyDelay = () => {
+      const cues = activeTrack.cues;
+      if (!cues) return;
+      for (let i = 0; i < cues.length; i++) {
+        const cue = cues[i] as any;
+        if (cue.originalStartTime === undefined) {
+          cue.originalStartTime = cue.startTime;
+          cue.originalEndTime = cue.endTime;
+        }
+        cue.startTime = cue.originalStartTime + delaySec;
+        cue.endTime = cue.originalEndTime + delaySec;
+      }
+    };
+
+    if (activeTrack.cues && activeTrack.cues.length > 0) {
+      applyDelay();
+    } else {
+      const handleCueChange = () => {
+        applyDelay();
+        activeTrack.removeEventListener('cuechange', handleCueChange);
+      };
+      activeTrack.addEventListener('cuechange', handleCueChange);
+    }
+  }, [subtitleDelay, activeSubtitle, streamUrl]);
 
   // Controls Logic
   const handlePlayPause = useCallback(() => {
@@ -853,10 +965,73 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   };
 
   const handleEnded = () => {
+    setShowNextEpOverlay(false);
     if (settings.autoPlayNext) {
       playNextEpisode();
     }
   };
+
+  // Derived: should show next-ep overlay (last 30s, movie excluded, has next ep)
+  const hasNextEpisode = episodesList.length > 0 && (episode < episodesList.length || seasonsList.some(s => s.season_number === season + 1));
+  const isNearEnd = duration > 60 && currentTime > 0 && (duration - currentTime) <= 30 && isPlaying;
+
+  // Next episode countdown manager
+  useEffect(() => {
+    if (!isNearEnd || !hasNextEpisode || mediaType === 'movie' || !settings.autoPlayNext) {
+      if (nextEpCountdownRef.current) clearInterval(nextEpCountdownRef.current);
+      setShowNextEpOverlay(false);
+      setNextEpCountdown(5);
+      nextEpCancelledRef.current = false;
+      return;
+    }
+
+    if (!showNextEpOverlay && !nextEpCancelledRef.current) {
+      setShowNextEpOverlay(true);
+      setNextEpCountdown(5);
+      nextEpCancelledRef.current = false;
+
+      if (nextEpCountdownRef.current) clearInterval(nextEpCountdownRef.current);
+      nextEpCountdownRef.current = setInterval(() => {
+        setNextEpCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(nextEpCountdownRef.current!);
+            if (!nextEpCancelledRef.current) playNextEpisode();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (nextEpCountdownRef.current) clearInterval(nextEpCountdownRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNearEnd, hasNextEpisode, mediaType, settings.autoPlayNext]);
+
+  // Skip segment detection tied to currentTime
+  useEffect(() => {
+    if (!skipTimes || !isPlaying) {
+      setSkipBtnVisible(null);
+      return;
+    }
+    const t = currentTime;
+    if (t >= skipTimes.introStart && t <= skipTimes.introEnd) {
+      if (skipIntroEnteredAt.current === null) skipIntroEnteredAt.current = t;
+      const timeInSeg = t - skipIntroEnteredAt.current;
+      setSkipBtnVisible('intro');
+      setSkipBtnAlwaysVisible(timeInSeg <= 10);
+    } else if (skipTimes.outroStart !== undefined && skipTimes.outroEnd !== undefined && t >= skipTimes.outroStart && t <= skipTimes.outroEnd) {
+      if (skipIntroEnteredAt.current === null) skipIntroEnteredAt.current = t;
+      const timeInSeg = t - skipIntroEnteredAt.current;
+      setSkipBtnVisible('outro');
+      setSkipBtnAlwaysVisible(timeInSeg <= 10);
+    } else {
+      skipIntroEnteredAt.current = null;
+      setSkipBtnVisible(null);
+      setSkipBtnAlwaysVisible(false);
+    }
+  }, [currentTime, skipTimes, isPlaying]);
 
   const handleSubtitleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1011,7 +1186,48 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   // Subtitles Options List
   const renderSubtitlesTab = () => {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
+        {/* Subtitle Delay Sync Card */}
+        <div className="bg-zinc-900/30 border border-white/5 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-300">Subtitle Sync</span>
+            <span className="text-xs font-mono font-bold text-red-500">
+              {subtitleDelay === 0 ? 'No Delay' : `${subtitleDelay > 0 ? '+' : ''}${subtitleDelay.toFixed(1)}s`}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSubtitleDelay(prev => Math.max(-10, prev - 0.5))}
+              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold text-[10px] rounded-lg transition-colors cursor-pointer"
+            >
+              -0.5s
+            </button>
+            <input
+              type="range"
+              min={-10}
+              max={10}
+              step={0.1}
+              value={subtitleDelay}
+              onChange={(e) => setSubtitleDelay(parseFloat(e.target.value))}
+              className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-600 outline-none"
+            />
+            <button
+              onClick={() => setSubtitleDelay(prev => Math.min(10, prev + 0.5))}
+              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold text-[10px] rounded-lg transition-colors cursor-pointer"
+            >
+              +0.5s
+            </button>
+          </div>
+          {subtitleDelay !== 0 && (
+            <button
+              onClick={() => setSubtitleDelay(0)}
+              className="w-full text-center text-[10px] font-bold text-zinc-400 hover:text-white transition-colors py-1 bg-white/5 hover:bg-white/10 rounded-lg cursor-pointer"
+            >
+              Reset Sync
+            </button>
+          )}
+        </div>
+
         <button
           onClick={() => setActiveSubtitle('none')}
           className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${activeSubtitle === 'none' ? 'bg-red-600/10 border-red-600 text-red-500' : 'bg-zinc-900/40 border-white/5 text-white hover:bg-zinc-900/60'}`}
@@ -1553,6 +1769,72 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
             <div className="flex items-center gap-2 px-4 py-2 bg-black/80 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl">
               <RotateCcw size={14} className="text-white animate-spin" />
               <span className="text-xs font-bold text-white tracking-wide">{hotSwapToast}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ⏭️ Skip Intro / Outro Button (p-stream-inspired) */}
+        {skipBtnVisible && !adActive && !iframeUrl && (skipBtnAlwaysVisible || showControls) && (
+          <div className="absolute bottom-28 right-4 sm:right-6 z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <button
+              onClick={() => {
+                if (!videoRef.current || !skipTimes) return;
+                const target = skipBtnVisible === 'intro' ? skipTimes.introEnd : (skipTimes.outroEnd || duration);
+                videoRef.current.currentTime = target;
+                setSkipBtnVisible(null);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/25 hover:border-white/40 rounded-xl text-white font-bold text-sm transition-all duration-200 hover:scale-105 shadow-2xl cursor-pointer group"
+            >
+              <SkipForward size={15} className="group-hover:translate-x-0.5 transition-transform" />
+              {skipBtnVisible === 'intro' ? 'Skip Intro' : 'Skip Outro'}
+            </button>
+          </div>
+        )}
+
+        {/* ⏭️ Next Episode Countdown Overlay (p-stream-inspired) */}
+        {showNextEpOverlay && hasNextEpisode && !adActive && !iframeUrl && (
+          <div className="absolute bottom-28 right-4 sm:right-6 z-40 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center gap-3 p-3 pr-4 bg-black/80 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl">
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15" fill="none"
+                    stroke="#ef4444" strokeWidth="3"
+                    strokeDasharray={`${2 * Math.PI * 15}`}
+                    strokeDashoffset={`${2 * Math.PI * 15 * (nextEpCountdown / 5)}`}
+                    strokeLinecap="round"
+                    style={{ transition: 'stroke-dashoffset 1s linear' }}
+                  />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">{nextEpCountdown}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs text-zinc-400 font-medium">Up Next</span>
+                <span className="text-white font-bold text-sm">Episode {episode + 1}</span>
+              </div>
+              <div className="flex items-center gap-2 ml-2">
+                <button
+                  onClick={() => {
+                    nextEpCancelledRef.current = true;
+                    if (nextEpCountdownRef.current) clearInterval(nextEpCountdownRef.current);
+                    setShowNextEpOverlay(false);
+                  }}
+                  className="text-xs text-zinc-400 hover:text-white transition-colors border border-white/20 rounded-lg px-2 py-1 cursor-pointer hover:border-white/40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (nextEpCountdownRef.current) clearInterval(nextEpCountdownRef.current);
+                    setShowNextEpOverlay(false);
+                    playNextEpisode();
+                  }}
+                  className="text-xs font-bold text-black bg-white hover:bg-zinc-100 rounded-lg px-3 py-1 transition-all cursor-pointer"
+                >
+                  Play Now
+                </button>
+              </div>
             </div>
           </div>
         )}

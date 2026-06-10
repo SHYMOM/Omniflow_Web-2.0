@@ -8,7 +8,7 @@ import type {
   IStreamSource,
   IStreamSubtitle,
 } from '@/types/extraction-types';
-import { ANIME, StreamingServers } from '@/lib/consumet';
+import { ANIME, DONGHUA, StreamingServers } from '@/lib/consumet';
 import { ProviderRegistry, type ProviderEntry } from './provider-registry';
 import { StealthHttpClient } from './stealth-client';
 import { getCachedStream, setCachedStream } from '@/lib/cache/redis';
@@ -17,6 +17,7 @@ import { MovieboxExtractor } from './moviebox-extractor';
 import { StremioExtractor } from './stremio-extractor';
 import { HindiDubbedExtractor } from './hindidubbed-extractor';
 import { DesiDubAnimeExtractor } from './desidubanime-extractor';
+import { titleSimilarity } from './string-matching';
 
 export class AnimeExtractionService {
   private registry: ProviderRegistry;
@@ -138,6 +139,36 @@ export class AnimeExtractionService {
         priority: 2,
         mediaTypes: ['anime'],
         execute: () => this.extractFromZoro(title, episode, ctx.language || 'sub'),
+      },
+      {
+        name: 'animoye',
+        priority: 2.1,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromAnimoye(title, episode, ctx.language || 'sub'),
+      },
+      {
+        name: 'aniwatchx',
+        priority: 2.2,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromAniwatchX(title, episode, ctx.language || 'sub'),
+      },
+      {
+        name: 'cksub',
+        priority: 2.3,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromCKSub(title, episode, ctx.language || 'sub'),
+      },
+      {
+        name: 'donghuastream',
+        priority: 2.4,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromDonghuaStream(title, episode, ctx.language || 'sub'),
+      },
+      {
+        name: 'lmanime',
+        priority: 2.5,
+        mediaTypes: ['anime'],
+        execute: () => this.extractFromLMAnime(title, episode, ctx.language || 'sub'),
       },
       {
         name: 'gogoanime',
@@ -348,6 +379,86 @@ export class AnimeExtractionService {
     
     // AnimePahe sources natively contain "eng" or "jpn" in audio tags sometimes, or we just pass it along
     return this.sanitizeSources(sources, 'animepahe', 'https://animepahe.ru/', 'sub');
+  }
+
+  private async extractFromAnimoye(title: string, episode: number, language: string): Promise<IStreamResult> {
+    const animoye = new (ANIME as any).Animoye();
+    const searchRes = await animoye.search(title);
+    if (!searchRes.results?.length) throw new Error(`Animoye: No results`);
+
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`Animoye: No matched results`);
+
+    const info = await animoye.fetchAnimeInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`Animoye: Episode not found`);
+
+    const sources = await animoye.fetchEpisodeSources(targetEp.id);
+    return this.sanitizeSources(sources, 'animoye', 'https://animoye.com/', 'sub');
+  }
+
+  private async extractFromAniwatchX(title: string, episode: number, language: string): Promise<IStreamResult> {
+    const aniwatchx = new (ANIME as any).AniwatchX();
+    const searchRes = await aniwatchx.search(title);
+    if (!searchRes.results?.length) throw new Error(`AniwatchX: No results`);
+
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`AniwatchX: No matched results`);
+
+    const info = await aniwatchx.fetchAnimeInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`AniwatchX: Episode not found`);
+
+    const sources = await aniwatchx.fetchEpisodeSources(targetEp.id);
+    return this.sanitizeSources(sources, 'aniwatchx', 'https://aniwatchx.to/', 'sub');
+  }
+
+  private async extractFromCKSub(title: string, episode: number, language: string): Promise<IStreamResult> {
+    const cksub = new (ANIME as any).CKSub();
+    const searchRes = await cksub.search(title);
+    if (!searchRes.results?.length) throw new Error(`CKSub: No results`);
+
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`CKSub: No matched results`);
+
+    const info = await cksub.fetchAnimeInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`CKSub: Episode not found`);
+
+    const sources = await cksub.fetchEpisodeSources(targetEp.id);
+    return this.sanitizeSources(sources, 'cksub', 'https://cksub.org/', 'sub');
+  }
+
+  private async extractFromDonghuaStream(title: string, episode: number, language: string): Promise<IStreamResult> {
+    const ds = new (DONGHUA as any).DonghuaStream();
+    const searchRes = await ds.search(title);
+    if (!searchRes.results?.length) throw new Error(`DonghuaStream: No results`);
+
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`DonghuaStream: No matched results`);
+
+    const info = await ds.fetchAnimeInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`DonghuaStream: Episode not found`);
+
+    const sources = await ds.fetchEpisodeSources(targetEp.id);
+    return this.sanitizeSources(sources, 'donghuastream', 'https://donghuastream.org/', 'sub');
+  }
+
+  private async extractFromLMAnime(title: string, episode: number, language: string): Promise<IStreamResult> {
+    const lm = new (DONGHUA as any).LMAnime();
+    const searchRes = await lm.search(title);
+    if (!searchRes.results?.length) throw new Error(`LMAnime: No results`);
+
+    const matched = this.findBestMatch(searchRes.results, title);
+    if (!matched) throw new Error(`LMAnime: No matched results`);
+
+    const info = await lm.fetchAnimeInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`LMAnime: Episode not found`);
+
+    const sources = await lm.fetchEpisodeSources(targetEp.id);
+    return this.sanitizeSources(sources, 'lmanime', 'https://lmanime.com/', 'sub');
   }
 
   // ─── Utilities ──────────────────────────────────────────────

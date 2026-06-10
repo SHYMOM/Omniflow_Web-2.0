@@ -8,8 +8,9 @@ import { searchHybrid } from '@/lib/api/hybrid';
 import type { MediaItem } from '@/types/media';
 import Image from 'next/image';
 
+const supabase = createClient();
+
 export default function AdsManager() {
-  const supabase = createClient();
   const [ads, setAds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalEnabled, setGlobalEnabled] = useState(true);

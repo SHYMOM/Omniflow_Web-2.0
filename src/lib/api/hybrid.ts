@@ -200,7 +200,9 @@ export function mapTMDBMovieToMediaItem(movie: TMDBMovie): MediaItem {
       type: 'movie',
       formatLabel: 'Movie',
       year: r.release_date ? new Date(r.release_date).getFullYear() : undefined
-    }))
+    })),
+    watchProviders: (movie as any)['watch/providers'],
+    imdbId: (movie as any).external_ids?.imdb_id || (movie as any).imdb_id || undefined
   };
 }
 
@@ -242,7 +244,9 @@ export function mapTMDBTVToMediaItem(tv: TMDBTVShow): MediaItem {
       type: 'tv',
       formatLabel: 'TV Show',
       year: r.first_air_date ? new Date(r.first_air_date).getFullYear() : undefined
-    }))
+    })),
+    watchProviders: (tv as any)['watch/providers'],
+    imdbId: (tv as any).external_ids?.imdb_id || undefined
   };
 }
 

@@ -13,7 +13,7 @@ import type {
   IStreamSource,
   IStreamSubtitle,
 } from '@/types/extraction-types';
-import { MOVIES, StreamingServers } from '@/lib/consumet';
+import { MOVIES, DRAMA, StreamingServers } from '@/lib/consumet';
 import { ProviderRegistry, type ProviderEntry } from './provider-registry';
 import { StealthHttpClient } from './stealth-client';
 import { PLAYWRIGHT_ENABLED, PLAYWRIGHT_TIMEOUT_MS } from './extraction-config';
@@ -163,6 +163,42 @@ export class MovieExtractionService {
           return this.extractFromMovieHdWatch(searchTitle, mediaType, episode, season);
         }
       },
+      {
+        name: 'cineby',
+        priority: 6,
+        mediaTypes: ['movie', 'tv'],
+        execute: () => this.extractFromCineby(title, mediaType, episode, season),
+      },
+      {
+        name: 'xprime',
+        priority: 7,
+        mediaTypes: ['movie', 'tv'],
+        execute: () => this.extractFromXPrime(title, mediaType, episode, season),
+      },
+      {
+        name: 'flixer',
+        priority: 8,
+        mediaTypes: ['movie', 'tv'],
+        execute: () => this.extractFromFlixer(title, mediaType, episode, season),
+      },
+      {
+        name: 'kisskh',
+        priority: 9,
+        mediaTypes: ['tv'],
+        execute: () => this.extractFromKissKH(title, episode),
+      },
+      {
+        name: 'asiaflix',
+        priority: 10,
+        mediaTypes: ['tv'],
+        execute: () => this.extractFromAsiaFlix(title, episode),
+      },
+      {
+        name: 'kdramasmaza',
+        priority: 11,
+        mediaTypes: ['tv'],
+        execute: () => this.extractFromKDramasMaza(title, episode),
+      },
     ];
 
     // UltimateAggregator removed as it depended on @movie-web/providers
@@ -306,5 +342,104 @@ export class MovieExtractionService {
       subtitles,
       headers: { Referer: rawSources.headers?.Referer || defaultReferer },
     };
+  }
+
+  private async extractFromCineby(title: string, mediaType: 'movie' | 'tv', episode: number, season: number): Promise<IStreamResult> {
+    const cb = new (MOVIES as any).Cineby();
+    const searchRes = await cb.search(title);
+    if (!searchRes.results?.length) throw new Error(`Cineby: No results`);
+
+    const matched = searchRes.results.find((item: any) =>
+      mediaType === 'movie' ? item.type === 'Movie' || item.type === 'MOVIE' : item.type === 'TV Series' || item.type === 'TVSERIES'
+    ) || searchRes.results[0];
+
+    const info = await cb.fetchMediaInfo(matched.id);
+    const targetEp = mediaType === 'tv'
+      ? info.episodes?.find((ep: any) => ep.season === season && ep.number === episode) || info.episodes?.[episode - 1]
+      : info.episodes?.[0];
+    if (!targetEp?.id) throw new Error(`Cineby: Episode not found`);
+
+    const sources = await cb.fetchEpisodeSources(targetEp.id, matched.id);
+    return this.sanitizeSources(sources, 'cineby', 'https://cineby.app/');
+  }
+
+  private async extractFromXPrime(title: string, mediaType: 'movie' | 'tv', episode: number, season: number): Promise<IStreamResult> {
+    const xp = new (MOVIES as any).XPrime();
+    const searchRes = await xp.search(title);
+    if (!searchRes.results?.length) throw new Error(`XPrime: No results`);
+
+    const matched = searchRes.results.find((item: any) =>
+      mediaType === 'movie' ? item.type === 'Movie' || item.type === 'MOVIE' : item.type === 'TV Series' || item.type === 'TVSERIES'
+    ) || searchRes.results[0];
+
+    const info = await xp.fetchMediaInfo(matched.id);
+    const targetEp = mediaType === 'tv'
+      ? info.episodes?.find((ep: any) => ep.season === season && ep.number === episode) || info.episodes?.[episode - 1]
+      : info.episodes?.[0];
+    if (!targetEp?.id) throw new Error(`XPrime: Episode not found`);
+
+    const sources = await xp.fetchEpisodeSources(targetEp.id, matched.id);
+    return this.sanitizeSources(sources, 'xprime', 'https://xprime.to/');
+  }
+
+  private async extractFromFlixer(title: string, mediaType: 'movie' | 'tv', episode: number, season: number): Promise<IStreamResult> {
+    const fl = new (MOVIES as any).Flixer();
+    const searchRes = await fl.search(title);
+    if (!searchRes.results?.length) throw new Error(`Flixer: No results`);
+
+    const matched = searchRes.results.find((item: any) =>
+      mediaType === 'movie' ? item.type === 'Movie' || item.type === 'MOVIE' : item.type === 'TV Series' || item.type === 'TVSERIES'
+    ) || searchRes.results[0];
+
+    const info = await fl.fetchMediaInfo(matched.id);
+    const targetEp = mediaType === 'tv'
+      ? info.episodes?.find((ep: any) => ep.season === season && ep.number === episode) || info.episodes?.[episode - 1]
+      : info.episodes?.[0];
+    if (!targetEp?.id) throw new Error(`Flixer: Episode not found`);
+
+    const sources = await fl.fetchEpisodeSources(targetEp.id, matched.id);
+    return this.sanitizeSources(sources, 'flixer', 'https://flixer.com/');
+  }
+
+  private async extractFromKissKH(title: string, episode: number): Promise<IStreamResult> {
+    const kh = new (DRAMA as any).KissKH();
+    const searchRes = await kh.search(title);
+    if (!searchRes.results?.length) throw new Error(`KissKH: No results`);
+
+    const matched = searchRes.results[0];
+    const info = await kh.fetchMediaInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`KissKH: Episode not found`);
+
+    const sources = await kh.fetchEpisodeSources(targetEp.id, matched.id);
+    return this.sanitizeSources(sources, 'kisskh', 'https://kisskh.co/');
+  }
+
+  private async extractFromAsiaFlix(title: string, episode: number): Promise<IStreamResult> {
+    const af = new (DRAMA as any).AsiaFlix();
+    const searchRes = await af.search(title);
+    if (!searchRes.results?.length) throw new Error(`AsiaFlix: No results`);
+
+    const matched = searchRes.results[0];
+    const info = await af.fetchMediaInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`AsiaFlix: Episode not found`);
+
+    const sources = await af.fetchEpisodeSources(targetEp.id, matched.id);
+    return this.sanitizeSources(sources, 'asiaflix', 'https://asiaflix.app/');
+  }
+
+  private async extractFromKDramasMaza(title: string, episode: number): Promise<IStreamResult> {
+    const km = new (DRAMA as any).KDramasMaza();
+    const searchRes = await km.search(title);
+    if (!searchRes.results?.length) throw new Error(`KDramasMaza: No results`);
+
+    const matched = searchRes.results[0];
+    const info = await km.fetchMediaInfo(matched.id);
+    const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
+    if (!targetEp?.id) throw new Error(`KDramasMaza: Episode not found`);
+
+    const sources = await km.fetchEpisodeSources(targetEp.id, matched.id);
+    return this.sanitizeSources(sources, 'kdramasmaza', 'https://kdramasmaza.net/');
   }
 }

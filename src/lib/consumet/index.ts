@@ -1,4 +1,4 @@
-import { ANIME, BOOKS, COMICS, LIGHT_NOVELS, MANGA, MOVIES, META, NEWS } from './providers';
+import { ANIME, BOOKS, COMICS, LIGHT_NOVELS, MANGA, MOVIES, META, NEWS, DRAMA, DONGHUA } from './providers';
 import { PROVIDERS_LIST } from './utils/providers-list';
 import {
   VizCloud,
@@ -58,7 +58,7 @@ import {
   ProxyConfig,
 } from './models';
 
-export { ANIME, BOOKS, COMICS, MANGA, LIGHT_NOVELS, MOVIES, META, NEWS };
+export { ANIME, BOOKS, COMICS, MANGA, LIGHT_NOVELS, MOVIES, META, NEWS, DRAMA, DONGHUA };
 export { PROVIDERS_LIST };
 export {
   Topics,

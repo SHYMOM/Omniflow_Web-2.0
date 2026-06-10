@@ -26,6 +26,13 @@ export interface IStreamMarker {
   end: number;           // seconds
 }
 
+export interface SkipTime {
+  introStart: number;
+  introEnd: number;
+  outroStart?: number;
+  outroEnd?: number;
+}
+
 export interface IStreamResult {
   success: boolean;
   provider: string;      // Which provider resolved this
@@ -37,7 +44,15 @@ export interface IStreamResult {
   download?: string;
   iframeUrl?: string;    // Fallback embed URL when direct extraction fails
   availableLanguages?: string[]; // Discovered languages ('sub', 'dub', etc.)
-  audioTracks?: Array<{ language: string; label: string; default?: boolean }>;
+  audioTracks?: IAudioTrack[];
+}
+
+export interface IAudioTrack {
+  id: string;
+  lang: string;         // e.g. "jpn", "eng", "hin"
+  label: string;        // e.g. "Japanese", "English", "Hindi"
+  url?: string;         // separate audio .m3u8 (if not embedded in master)
+  default: boolean;
 }
 
 // ─── Manga Page Extraction ───────────────────────────────────

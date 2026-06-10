@@ -40,6 +40,16 @@ export default function OverviewTab({ media }: OverviewTabProps) {
     ...(media.synonyms?.length ? [{ label: 'Synonyms', value: media.synonyms.join(', ') }] : []),
   ];
 
+  const providersData = media.watchProviders?.results;
+  const regionCode = providersData ? (providersData.US ? 'US' : Object.keys(providersData)[0]) : null;
+  const regionProviders = regionCode ? providersData[regionCode] : null;
+
+  const streamProviders: any[] = regionProviders?.flatrate || [];
+  const justWatchUrl = regionProviders?.link || `https://www.justwatch.com/us/search?q=${encodeURIComponent(media.title)}`;
+
+  const isMovie = media.type === 'movie';
+  const letterboxdUrl = isMovie ? `https://letterboxd.com/search/${encodeURIComponent(media.title + ' ' + media.year)}` : null;
+
   return (
     <div className="space-y-8 pb-8">
       {/* Expandable Clamped Description Block */}
@@ -73,6 +83,91 @@ export default function OverviewTab({ media }: OverviewTabProps) {
             <p className="text-lg font-semibold text-white">{value}</p>
           </div>
         ))}
+      </div>
+
+      {/* External Links & Metadata Badges (JustWatch & Letterboxd) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* JustWatch Availability Panel */}
+        <div className="bg-surface/30 p-4 rounded-xl border border-border flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Streaming Availability</h3>
+              <span className="text-[10px] text-zinc-500 font-semibold font-mono uppercase bg-black/30 px-2 py-0.5 rounded">via JustWatch</span>
+            </div>
+
+            {streamProviders.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {streamProviders.map((provider: any) => (
+                    <div
+                      key={provider.provider_id}
+                      className="relative w-8 h-8 rounded-lg overflow-hidden border border-white/10 group cursor-pointer"
+                      title={provider.provider_name}
+                      onClick={() => window.open(justWatchUrl, '_blank')}
+                    >
+                      <Image
+                        src={`https://image.tmdb.org/t/p/original${provider.logo_path}`}
+                        alt={provider.provider_name}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-zinc-400">Streaming now in {regionCode || 'US'}. Click logo to see details.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary leading-relaxed">No flatrate streaming options currently found in your region.</p>
+            )}
+          </div>
+
+          <button
+            onClick={() => window.open(justWatchUrl, '_blank')}
+            className="w-full text-center text-xs font-bold text-white hover:bg-white/10 transition-colors py-2.5 bg-white/5 border border-white/5 rounded-xl cursor-pointer mt-4"
+          >
+            Check JustWatch Options
+          </button>
+        </div>
+
+        {/* Letterboxd / External Ratings Integration */}
+        <div className="bg-surface/30 p-4 rounded-xl border border-border flex flex-col justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wider">Ratings & Reviews</h3>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-surface rounded-xl p-3 border border-border text-center flex-1">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-0.5">TMDB</span>
+                <span className="text-base font-extrabold text-white">{score ? `${(score * 10).toFixed(0)}%` : 'N/A'}</span>
+              </div>
+              {media.meanScore ? (
+                <div className="bg-surface rounded-xl p-3 border border-border text-center flex-1">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-0.5">AniList</span>
+                  <span className="text-base font-extrabold text-white">{media.meanScore}%</span>
+                </div>
+              ) : null}
+            </div>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Compare viewer reactions and read structured reviews from aggregate community databases.
+            </p>
+          </div>
+
+          {isMovie && letterboxdUrl ? (
+            <button
+              onClick={() => window.open(letterboxdUrl, '_blank')}
+              className="w-full flex items-center justify-center gap-2 text-xs font-extrabold text-[#00e054] hover:bg-[#00e054]/10 transition-colors py-2.5 bg-[#00e054]/5 border border-[#00e054]/20 rounded-xl cursor-pointer mt-4"
+            >
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#ff8000] shadow-[0_0_8px_#ff8000]" />
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#00e054] shadow-[0_0_8px_#00e054] -ml-1.5" />
+              <span>Search on Letterboxd</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => window.open(`https://www.imdb.com/find?q=${encodeURIComponent(media.title)}`, '_blank')}
+              className="w-full text-center text-xs font-bold text-yellow-500 hover:bg-yellow-500/10 transition-colors py-2.5 bg-yellow-500/5 border border-yellow-500/20 rounded-xl cursor-pointer mt-4"
+            >
+              Search on IMDb
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Info table */}

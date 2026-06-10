@@ -6,5 +6,7 @@ import COMICS from './comics';
 import MOVIES from './movies';
 import META from './meta';
 import NEWS from './news';
+import DRAMA from './drama';
+import DONGHUA from './donghua';
 
-export { ANIME, MANGA, BOOKS, COMICS, LIGHT_NOVELS, MOVIES, META, NEWS };
+export { ANIME, MANGA, BOOKS, COMICS, LIGHT_NOVELS, MOVIES, META, NEWS, DRAMA, DONGHUA };

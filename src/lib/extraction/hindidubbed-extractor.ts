@@ -39,7 +39,8 @@ export class HindiDubbedExtractor {
         }
       });
 
-      const bestMatch = findBestMatch(title, candidates);
+      const result = findBestMatch(title, candidates as any);
+      const bestMatch = result.match;
       const matchedSlug = bestMatch?.slug;
 
       if (!matchedSlug) {

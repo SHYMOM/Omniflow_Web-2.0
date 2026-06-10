@@ -326,12 +326,21 @@ export interface Intro {
   end: number;
 }
 
+export interface IAudioTrack {
+  id: string;
+  lang: string;         // e.g. "jpn", "eng", "hin"
+  label: string;        // e.g. "Japanese", "English", "Hindi"
+  url?: string;         // separate audio .m3u8 (if not embedded in master)
+  default: boolean;
+}
+
 export interface ISource {
   headers?: { [k: string]: string };
   intro?: Intro;
   outro?: Intro;
   subtitles?: ISubtitle[];
   sources: IVideo[];
+  audioTracks?: IAudioTrack[];
   download?: string;
   embedURL?: string;
 }

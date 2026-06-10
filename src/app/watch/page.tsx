@@ -32,7 +32,7 @@ function WatchContent() {
   const seasonNum = Number(searchParams.get('season') || '1');
 
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
-  const { activeServerId, setActiveServer, downloadUrl, setIsDownloadModalOpen } = usePlayerStore();
+  const { setShowDownloadModal, activeServerId, setActiveServer } = usePlayerStore();
   const { addToHistory } = useUserStore();
 
   const [showAlertStrip, setShowAlertStrip] = useState(true);
@@ -234,14 +234,13 @@ function WatchContent() {
         <div className="w-full space-y-4">
           {/* Main Integrated Video Player */}
           <div className="rounded-xl overflow-hidden border border-border shadow-2xl bg-void">
-            <VideoPlayer
-              malId={malId}
-              tmdbId={mediaId}
-              mediaType={mediaType}
-              episode={epNum}
-              season={seasonNum}
-              serverId={activeServerId}
-              mediaTitle={seriesTitle}
+              <VideoPlayer
+                malId={malId}
+                tmdbId={mediaId}
+                mediaType={mediaType}
+                episode={epNum}
+                season={seasonNum}
+                mediaTitle={seriesTitle}
               imdbId={(media as any)?.imdb_id || (media as any)?.external_ids?.imdb_id || undefined}
             />
           </div>
@@ -334,22 +333,17 @@ function WatchContent() {
               )}
             </div>
 
-            {downloadUrl ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsDownloadModalOpen(true);
-                }}
-                className="flex items-center justify-center bg-accent-green/20 hover:bg-accent-green/40 w-8 h-8 rounded-full border border-accent-green/30 text-accent-green transition-colors cursor-pointer shadow-[0_0_10px_rgba(0,230,118,0.2)]"
-                title="Download Stream"
-              >
-                <Download size={13} />
-              </button>
-            ) : (
-              <button className="flex items-center justify-center bg-surface/60 w-8 h-8 rounded-full border border-border/40 text-text-muted cursor-not-allowed opacity-50">
-                <Download size={13} />
-              </button>
-            )}
+            {/* We will determine download availability based on the loaded sources */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDownloadModal(true);
+              }}
+              className="flex items-center justify-center bg-accent-green/20 hover:bg-accent-green/40 w-8 h-8 rounded-full border border-accent-green/30 text-accent-green transition-colors cursor-pointer shadow-[0_0_10px_rgba(0,230,118,0.2)]"
+              title="Download Stream"
+            >
+              <Download size={13} />
+            </button>
 
             <button onClick={handleReport} className="flex items-center gap-1.5 bg-surface/60 hover:bg-surface px-3.5 py-2 rounded-full border border-border/40 text-xs font-bold text-text-secondary hover:text-white transition-colors cursor-pointer ml-auto">
               <Flag size={13} />

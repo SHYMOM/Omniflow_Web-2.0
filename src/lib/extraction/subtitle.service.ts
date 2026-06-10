@@ -1,117 +1,243 @@
 import { memoryCache } from '@/lib/cache/memory';
+import { IStreamSubtitle } from '@/types/extraction-types';
 
-export interface ExternalSubtitle {
-  lang: string; // ISO 639-1 code (e.g. 'en', 'hi')
-  label: string; // Human-readable name (e.g. 'English', 'Hindi')
-  url: string;
+export interface SubtitleSearchParams {
+  imdbId?: string;
+  tmdbId?: string | number;
+  anilistId?: string | number;
+  title?: string;
+  season?: number;
+  episode?: number;
+  languages?: string[];
+  existingSubs?: IStreamSubtitle[];
 }
 
-/**
- * Fetch subtitles from an external REST API (e.g., OpenSubtitles API or TMDB-based subtitle scrapers).
- * Mapped by language code.
- */
-export async function fetchExternalSubtitles(
-  tmdbId: string | number,
-  type: 'movie' | 'tv' | 'anime' = 'movie',
-  season?: number,
-  episode?: number
-): Promise<ExternalSubtitle[]> {
-  const cacheKey = `subtitles:${type}:${tmdbId}:${season}:${episode}`;
-  const cached = memoryCache.get<ExternalSubtitle[]>(cacheKey);
-  if (cached) return cached;
+export class SubtitleService {
+  /**
+   * Convert SRT formatted string to WebVTT
+   */
+  static srtToVtt(srt: string): string {
+    return 'WEBVTT\n\n' + srt
+      .replace(/\r\n/g, '\n')
+      .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2') // SRT time → VTT time
+      .trim();
+  }
 
-  try {
-    const apiKey = process.env.TMDB_API_KEY;
-    console.log(`[Subtitles] Fetching for TMDB ID: ${tmdbId}, Type: ${type}, TMDB_API_KEY exists: ${!!apiKey}`);
-    if (!apiKey) {
-      console.warn('[Subtitles] TMDB_API_KEY is missing');
-      return [];
-    }
+  /**
+   * Proxies URLs through our API so CORS and format conversions are handled
+   */
+  private static proxyUrl(url: string, isSrt: boolean = false): string {
+    if (!url) return '';
+    // If it's already proxied, return it
+    if (url.includes('/api/stream/proxy')) return url;
+    return `/api/stream/proxy?url=${encodeURIComponent(url)}${isSrt ? '&format=vtt' : ''}`;
+  }
 
-    let imdbId = '';
-    if (type === 'anime') {
-      const tvUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/external_ids?api_key=${apiKey}`;
-      const tvRes = await fetch(tvUrl);
-      if (tvRes.ok) {
-        const tvData = await tvRes.json();
-        imdbId = tvData.imdb_id;
-      } else {
-        const movieUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/external_ids?api_key=${apiKey}`;
-        const movieRes = await fetch(movieUrl);
-        if (movieRes.ok) {
-          const movieData = await movieRes.json();
-          imdbId = movieData.imdb_id;
+  /**
+   * Source 1: Validate and format provider-embedded subtitles
+   */
+  static async validateProviderSubtitles(subtitles: IStreamSubtitle[]): Promise<IStreamSubtitle[]> {
+    if (!subtitles || !subtitles.length) return [];
+    
+    return subtitles
+      .filter(sub => sub.url && sub.url.length > 5)
+      .map(sub => {
+        const isSrt = sub.url.toLowerCase().endsWith('.srt');
+        return {
+          lang: this.normalizeLanguageCode(sub.lang),
+          label: sub.label || this.getLanguageLabel(sub.lang),
+          url: this.proxyUrl(sub.url, isSrt),
+          default: sub.default
+        };
+      });
+  }
+
+  /**
+   * Source 2: OpenSubtitles REST API (Free tier)
+   */
+  static async searchOpenSubtitles(params: SubtitleSearchParams): Promise<IStreamSubtitle[]> {
+    const apiKey = process.env.OPENSUBTITLES_API_KEY;
+    if (!apiKey || (!params.imdbId && !params.tmdbId)) return [];
+
+    try {
+      const payload: any = {};
+      if (params.imdbId) payload.imdb_id = params.imdbId.replace('tt', '');
+      if (params.tmdbId) payload.tmdb_id = Number(params.tmdbId);
+      if (params.season) payload.season_number = params.season;
+      if (params.episode) payload.episode_number = params.episode;
+      if (params.languages && params.languages.length > 0) {
+        payload.languages = params.languages;
+      }
+
+      const res = await fetch('https://api.opensubtitles.com/api/v1/subtitles', {
+        method: 'GET',
+        headers: {
+          'Api-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!res.ok) return [];
+      const data = await res.json();
+      
+      const subs: IStreamSubtitle[] = [];
+      const seenLangs = new Set<string>();
+
+      for (const sub of data.data || []) {
+        const lang = this.normalizeLanguageCode(sub.attributes.language);
+        if (!seenLangs.has(lang)) {
+          // We must fetch the actual download URL using the file_id
+          const fileId = sub.attributes.files[0]?.file_id;
+          if (fileId) {
+            seenLangs.add(lang);
+            // The download URL has to be fetched via POST to /download
+            const dlRes = await fetch('https://api.opensubtitles.com/api/v1/download', {
+              method: 'POST',
+              headers: {
+                'Api-Key': apiKey,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify({ file_id: fileId })
+            });
+
+            if (dlRes.ok) {
+              const dlData = await dlRes.json();
+              if (dlData.link) {
+                subs.push({
+                  lang,
+                  label: this.getLanguageLabel(lang) + ' (OS)',
+                  url: this.proxyUrl(dlData.link, true)
+                });
+              }
+            }
+          }
         }
       }
-    } else {
-      const tmdbType = type === 'movie' ? 'movie' : 'tv';
-      const tmdbUrl = `https://api.themoviedb.org/3/${tmdbType}/${tmdbId}/external_ids?api_key=${apiKey}`;
-      const tmdbRes = await fetch(tmdbUrl);
-      if (tmdbRes.ok) {
-        const tmdbData = await tmdbRes.json();
-        imdbId = tmdbData.imdb_id;
-      } else {
-        console.warn(`[Subtitles] TMDB request failed with status: ${tmdbRes.status}`);
+      return subs;
+    } catch (e) {
+      console.error('[SubtitleService] OpenSubtitles search failed:', e);
+      return [];
+    }
+  }
+
+  /**
+   * Source 3: SubDL API (Free)
+   */
+  static async searchSubDL(params: SubtitleSearchParams): Promise<IStreamSubtitle[]> {
+    if (!params.tmdbId || !params.season || !params.episode) return [];
+    const apiKey = process.env.SUBDL_API_KEY || ''; // Free tier often works without key
+
+    try {
+      const url = `https://subdl.com/api/v1/subtitles/?api_key=${apiKey}&tmdb_id=${params.tmdbId}&season_number=${params.season}&episode_number=${params.episode}&languages=EN,HI,ES,FR,DE,JA`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      
+      const data = await res.json();
+      if (!data.status || !data.subtitles) return [];
+
+      const subs: IStreamSubtitle[] = [];
+      const seenLangs = new Set<string>();
+
+      for (const sub of data.subtitles) {
+        const lang = this.normalizeLanguageCode(sub.language);
+        if (!seenLangs.has(lang) && sub.url) {
+          seenLangs.add(lang);
+          subs.push({
+            lang,
+            label: this.getLanguageLabel(lang) + ' (SubDL)',
+            url: this.proxyUrl('https://subdl.com' + sub.url, true)
+          });
+        }
       }
-    }
-
-    console.log(`[Subtitles] Resolved IMDB ID: ${imdbId}`);
-    if (!imdbId) return [];
-
-    let stremioUrl = `https://opensubtitles-v3.strem.io/subtitles/movie/${imdbId}.json`;
-    if ((type === 'tv' || type === 'anime') && season && episode) {
-      stremioUrl = `https://opensubtitles-v3.strem.io/subtitles/series/${imdbId}:${season}:${episode}.json`;
-    }
-
-    console.log(`[Subtitles] Querying Stremio: ${stremioUrl}`);
-    const subRes = await fetch(stremioUrl);
-    if (!subRes.ok) {
-      console.warn(`[Subtitles] Stremio request failed: ${subRes.status}`);
+      return subs;
+    } catch (e) {
+      console.warn('[SubtitleService] SubDL search failed:', e);
       return [];
     }
-    
-    const subData = await subRes.json();
-    if (!subData.subtitles || !Array.isArray(subData.subtitles)) {
-      console.warn('[Subtitles] No subtitles found in Stremio response');
-      return [];
-    }
+  }
 
-    console.log(`[Subtitles] Found ${subData.subtitles.length} subtitles in Stremio`);
+  /**
+   * Aggregate all subtitle sources
+   */
+  static async getSubtitles(params: SubtitleSearchParams): Promise<IStreamSubtitle[]> {
+    const cacheKey = `subs:${params.tmdbId || params.anilistId}:${params.season}:${params.episode}`;
+    const cached = memoryCache.get<IStreamSubtitle[]>(cacheKey);
+    if (cached && cached.length > 0) return cached;
 
-    const formattedSubs: ExternalSubtitle[] = [];
+    const [providerSubs, osSubs, subdlSubs] = await Promise.allSettled([
+      this.validateProviderSubtitles(params.existingSubs || []),
+      this.searchOpenSubtitles(params),
+      this.searchSubDL(params)
+    ]);
+
+    const finalSubs: IStreamSubtitle[] = [];
     const seenLangs = new Set<string>();
 
-    const languageMap: Record<string, { code: string; label: string }> = {
-      'eng': { code: 'en', label: 'English' },
-      'hin': { code: 'hi', label: 'Hindi' },
-      'spa': { code: 'es', label: 'Spanish' },
-      'fre': { code: 'fr', label: 'French' },
-      'ger': { code: 'de', label: 'German' },
-      'jpn': { code: 'ja', label: 'Japanese' },
-      'kor': { code: 'ko', label: 'Korean' },
-      'por': { code: 'pt', label: 'Portuguese' },
-      'ara': { code: 'ar', label: 'Arabic' },
-      'chi': { code: 'zh', label: 'Chinese' }
-    };
-
-    for (const sub of subData.subtitles) {
-      const rawLang = sub.lang || 'unk';
-      const mapping = languageMap[rawLang];
-      
-      if (mapping && !seenLangs.has(mapping.code)) {
-        seenLangs.add(mapping.code);
-        formattedSubs.push({
-          lang: mapping.code,
-          label: mapping.label,
-          url: sub.url
-        });
+    // Priority 1: Provider embedded
+    if (providerSubs.status === 'fulfilled') {
+      for (const sub of providerSubs.value) {
+        if (!seenLangs.has(sub.lang)) {
+          seenLangs.add(sub.lang);
+          finalSubs.push(sub);
+        }
       }
     }
 
-    memoryCache.set(cacheKey, formattedSubs);
-    return formattedSubs;
-  } catch (error) {
-    console.error('Failed to fetch external subtitles:', error);
-    return [];
+    // Priority 2: OpenSubtitles
+    if (osSubs.status === 'fulfilled') {
+      for (const sub of osSubs.value) {
+        if (!seenLangs.has(sub.lang)) {
+          seenLangs.add(sub.lang);
+          finalSubs.push(sub);
+        }
+      }
+    }
+
+    // Priority 3: SubDL
+    if (subdlSubs.status === 'fulfilled') {
+      for (const sub of subdlSubs.value) {
+        if (!seenLangs.has(sub.lang)) {
+          seenLangs.add(sub.lang);
+          finalSubs.push(sub);
+        }
+      }
+    }
+
+    if (finalSubs.length > 0) {
+      memoryCache.set(cacheKey, finalSubs);
+    }
+    return finalSubs;
+  }
+
+  // Helpers
+  private static normalizeLanguageCode(lang: string): string {
+    const l = lang.toLowerCase();
+    if (l.includes('eng') || l === 'en') return 'en';
+    if (l.includes('hin') || l === 'hi') return 'hi';
+    if (l.includes('spa') || l === 'es') return 'es';
+    if (l.includes('fre') || l === 'fr') return 'fr';
+    if (l.includes('ger') || l === 'de') return 'de';
+    if (l.includes('jpn') || l === 'ja') return 'ja';
+    return l.substring(0, 2);
+  }
+
+  private static getLanguageLabel(code: string): string {
+    const map: Record<string, string> = {
+      'en': 'English',
+      'hi': 'Hindi',
+      'es': 'Spanish',
+      'fr': 'French',
+      'de': 'German',
+      'ja': 'Japanese',
+      'ko': 'Korean',
+      'zh': 'Chinese',
+      'ru': 'Russian',
+      'ar': 'Arabic',
+      'pt': 'Portuguese',
+      'it': 'Italian',
+    };
+    return map[code] || code.toUpperCase();
   }
 }

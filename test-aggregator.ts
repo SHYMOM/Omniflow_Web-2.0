@@ -1,4 +1,5 @@
-import { UniversalAggregatorService } from './src/lib/extraction/universal-aggregator.service.ts';
+import 'dotenv/config';
+import { UniversalAggregatorService } from './src/lib/extraction/universal-aggregator.service';
 
 async function test() {
   const service = new UniversalAggregatorService();

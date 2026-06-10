@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import axios from 'axios';
 import { supabase } from '@/lib/supabase';
 import { expandQuery } from './query-expander';
 import { StealthHttpClient } from './stealth-client';
@@ -65,7 +66,8 @@ export class UniversalAggregatorService {
     season = 1,
     episode = 1,
     language?: string,
-    imdbId?: string
+    imdbId?: string,
+    onProgress?: (event: string, data: any) => void
   ): Promise<UniversalAggregationResult> {
     const key = `${mediaType}:${mediaId}:${season}:${episode}:${language || 'sub'}:${imdbId || ''}`;
     
@@ -75,7 +77,7 @@ export class UniversalAggregatorService {
       return ongoing;
     }
     
-    const promise = this.performAggregation(mediaId, mediaType, season, episode, language, imdbId);
+    const promise = this.performAggregation(mediaId, mediaType, season, episode, language, imdbId, onProgress);
     this.activeAggregations.set(key, promise);
     
     try {
@@ -91,7 +93,8 @@ export class UniversalAggregatorService {
     season = 1,
     episode = 1,
     language?: string,
-    imdbId?: string
+    imdbId?: string,
+    onProgress?: (event: string, data: any) => void
   ): Promise<UniversalAggregationResult> {
     const startTime = Date.now();
     console.log(`[UniversalAggregator] Resolving streams for ${mediaId} (Season ${season}, Episode ${episode})`);
@@ -141,9 +144,19 @@ export class UniversalAggregatorService {
     console.log(`[UniversalAggregator] Cache MISS. Initiating query expansion and parallel scraping...`);
 
     // 2. Query Expansion Matrix
-    const { queries, primaryTitle, tmdbId, imdbId: resolvedImdbId } = await expandQuery(mediaId, mediaType, season);
+    const { queries, primaryTitle, tmdbId, imdbId: resolvedImdbId, expectedDuration } = await expandQuery(mediaId, mediaType, season);
     const finalImdbId = imdbId || resolvedImdbId;
     console.log(`[UniversalAggregator] Expanded "${primaryTitle}" to ${queries.length} search variations. IMDB: ${finalImdbId}`);
+
+    // Calculate minimum required duration in seconds to prevent trailer / ad-prefixed snippets
+    let minDurationSec = 600; // default 10 minutes
+    if (mediaType === 'movie') {
+      minDurationSec = 2700; // default 45 minutes
+    }
+    if (expectedDuration) {
+      minDurationSec = Math.max(120, expectedDuration * 60 * 0.5); // at least 2 minutes, or 50% of expected duration
+    }
+    console.log(`[UniversalAggregator] Expected Media Duration: ${expectedDuration || 'unknown'} mins. Enforcing minimum duration gate: ${minDurationSec} seconds.`);
 
     // 3. Parallel Provider Blast Setup
     const allTasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[] = [];
@@ -294,7 +307,39 @@ export class UniversalAggregatorService {
       });
     }
 
-    // Custom helper for first-win resolver
+    // STREMIO ADDON FALLBACK — works for movies, tv, anime with IMDB IDs
+    if ((mediaType === 'movie' || mediaType === 'tv' || mediaType === 'anime') && (finalImdbId || tmdbId)) {
+      const stremioTask = (async () => {
+        const streams: UniversalStream[] = [];
+        try {
+          const { StremioExtractor } = await import('./stremio-extractor');
+          const extractor = new StremioExtractor();
+          const result = await extractor.extractDirectStream(
+            String(tmdbId || mediaId.replace(/[^\d]/g, '')),
+            mediaType as 'movie' | 'tv' | 'anime',
+            episode,
+            season,
+            finalImdbId || undefined
+          );
+          if (result.success && result.sources) {
+            result.sources.forEach((src: any) => {
+              streams.push({
+                language: 'sub',
+                video_url: src.url,
+                video_type: src.isM3U8 ? 'm3u8' : 'mp4',
+                source_name: 'stremio-addons',
+              });
+            });
+          }
+        } catch (e) {
+          console.warn('[StremioFallback] error:', e);
+        }
+        return { streams, subtitles: [], provider: 'stremio-addons' };
+      })();
+      allTasks.push(stremioTask);
+    }
+
+    // Custom helper for first-win resolver with quality/duration gating
     const firstSuccess = (
       tasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[],
       timeoutMs: number
@@ -312,14 +357,36 @@ export class UniversalAggregatorService {
         }, timeoutMs);
 
         tasks.forEach(p => {
-          p.then(res => {
+          p.then(async (res) => {
             completedCount++;
             if (res && res.streams && res.streams.length > 0) {
-              successfulResults.push({ streams: res.streams, subtitles: res.subtitles });
-              if (!resolved) {
-                resolved = true;
-                clearTimeout(timer);
-                resolve(successfulResults);
+              // Perform quality-gate validation on all streams
+              const validStreams: UniversalStream[] = [];
+              for (const stream of res.streams) {
+                const check = await this.validateHLSPresentation(stream.video_url, stream.referer, minDurationSec);
+                if (check.valid) {
+                  validStreams.push(stream);
+                } else {
+                  console.warn(`[UniversalAggregator] Rejected stream from ${res.provider}: ${check.reason} (URL: ${stream.video_url})`);
+                }
+              }
+
+              if (validStreams.length > 0) {
+                if (onProgress) onProgress('provider_success', { provider: res.provider, streams: validStreams });
+                successfulResults.push({ streams: validStreams, subtitles: res.subtitles });
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(timer);
+                  resolve(successfulResults);
+                }
+              } else {
+                if (completedCount === tasks.length) {
+                  if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timer);
+                    resolve(successfulResults);
+                  }
+                }
               }
             } else if (completedCount === tasks.length) {
               if (!resolved) {
@@ -366,7 +433,17 @@ export class UniversalAggregatorService {
           allSubtitles.push(...res.value.subtitles);
         }
       });
-      await this.saveCache(mediaId, season, episode, allStreams, allSubtitles);
+      
+      // Filter out low-quality/fake streams from background scrapers before caching
+      const validStreams: UniversalStream[] = [];
+      for (const stream of allStreams) {
+        const check = await this.validateHLSPresentation(stream.video_url, stream.referer, minDurationSec);
+        if (check.valid) {
+          validStreams.push(stream);
+        }
+      }
+      
+      await this.saveCache(mediaId, season, episode, validStreams, allSubtitles);
     }).catch(err => {
       console.error('[UniversalAggregator] Background tasks error:', err);
     });
@@ -777,5 +854,124 @@ export class UniversalAggregatorService {
       release();
     }
     return streams;
+  }
+
+  private async validateHLSPresentation(
+    url: string,
+    referer?: string,
+    minDurationSec: number = 600
+  ): Promise<{ valid: boolean; reason?: string }> {
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      };
+      if (referer) {
+        headers['Referer'] = referer;
+        try {
+          headers['Origin'] = new URL(referer).origin;
+        } catch {}
+      }
+
+      // Check for ad-server domains in the main URL first
+      const adDomains = [
+        'ibyteimg.com',
+        'byteimg.com',
+        'ad-site-i18n',
+        'doubleclick',
+        'googlesyndication',
+        'criteo'
+      ];
+      const hasAdDomainInUrl = adDomains.some(domain => url.toLowerCase().includes(domain));
+      if (hasAdDomainInUrl) {
+        return { valid: false, reason: 'Detected advertisement/tracking hosting CDN in stream URL' };
+      }
+
+      if (!url.toLowerCase().includes('.m3u8') && !url.toLowerCase().includes('m3u8')) {
+        // Direct MP4 check
+        try {
+          const headRes = await axios.head(url, { timeout: 3000, headers });
+          if (headRes.status >= 400) {
+            return { valid: false, reason: `MP4 returned status ${headRes.status}` };
+          }
+        } catch (err) {
+          try {
+            const getRes = await axios.get(url, {
+              timeout: 3000,
+              headers: { ...headers, Range: 'bytes=0-100' }
+            });
+            if (getRes.status >= 400) {
+              return { valid: false, reason: `MP4 range request returned status ${getRes.status}` };
+            }
+          } catch (getErr) {
+            return { valid: false, reason: `MP4 check failed: ${(getErr as Error).message}` };
+          }
+        }
+        return { valid: true };
+      }
+
+      // HLS Check: Fetch playlist
+      const res = await axios.get(url, { timeout: 3000, headers });
+      const text = res.data;
+      if (typeof text !== 'string') {
+        return { valid: false, reason: 'Invalid playlist response type' };
+      }
+
+      let playlistText = text;
+      let targetUrl = url;
+
+      // Handle master playlist redirecting to media playlist
+      if (text.includes('#EXT-X-STREAM-INF')) {
+        const lines = text.split('\n');
+        let firstMediaUrl = '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#')) {
+            if (trimmed.startsWith('http')) {
+              firstMediaUrl = trimmed;
+            } else {
+              firstMediaUrl = new URL(trimmed, url).href;
+            }
+            break;
+          }
+        }
+        
+        if (firstMediaUrl) {
+          targetUrl = firstMediaUrl;
+          const mediaRes = await axios.get(firstMediaUrl, { timeout: 3000, headers });
+          playlistText = mediaRes.data;
+          if (typeof playlistText !== 'string') {
+            return { valid: false, reason: 'Invalid sub-playlist response type' };
+          }
+        } else {
+          return { valid: false, reason: 'Empty master playlist' };
+        }
+      }
+
+      // Check for ad-server domains in the playlist text/segment URLs
+      const hasAdDomainInSegments = adDomains.some(domain => playlistText.toLowerCase().includes(domain));
+      if (hasAdDomainInSegments) {
+        return { valid: false, reason: 'Detected advertisement/tracking hosting CDN in playlist segments' };
+      }
+
+      // Parse and sum segment durations
+      let totalDuration = 0;
+      const lines = playlistText.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('#EXTINF:')) {
+          const val = parseFloat(line.replace('#EXTINF:', '').split(',')[0]);
+          if (!isNaN(val)) {
+            totalDuration += val;
+          }
+        }
+      }
+
+      if (totalDuration < minDurationSec) {
+        return { valid: false, reason: `Stream duration too short: ${totalDuration.toFixed(1)}s (min required ${minDurationSec}s)` };
+      }
+
+      return { valid: true };
+    } catch (err) {
+      return { valid: false, reason: `Network error or block: ${(err as Error).message}` };
+    }
   }
 }

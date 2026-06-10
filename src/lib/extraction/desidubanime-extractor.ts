@@ -35,7 +35,8 @@ export class DesiDubAnimeExtractor {
         if (t && slug) results.push({ title: t, slug });
       });
 
-      const bestMatch = findBestMatch(title, results);
+      const result = findBestMatch(title, results as any);
+      const bestMatch = result.match;
       if (!bestMatch) {
         throw new Error(`DesiDubAnime: No match found for ${title}`);
       }

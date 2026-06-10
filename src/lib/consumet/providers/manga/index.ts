@@ -12,6 +12,8 @@ import MangaHost from './mangahost';
 import BRMangas from './brmangas';
 import ReadManga from './readmanga';
 import VyvyManga from './vyvymanga';
+import Webtoons from './webtoons';
+import MangaFire from './mangafire';
 
 export default {
   MangaDex,
@@ -28,4 +30,6 @@ export default {
   BRMangas,
   ReadManga,
   VyvyManga,
+  Webtoons,
+  MangaFire,
 };

@@ -77,6 +77,8 @@ export interface MediaItem {
     relationType: string;
     formatLabel?: string;
   }>;
+  watchProviders?: any;
+  imdbId?: string;
 }
 
 export interface WatchHistoryEntry {

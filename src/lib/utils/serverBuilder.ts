@@ -44,3 +44,16 @@ export function getRecommendedServer(servers: Server[]): Server | undefined {
 export function serverSupportsType(server: Server, type: keyof ServerPattern): boolean {
   return !!server.patterns[type];
 }
+
+/**
+ * Builds a synthetic HLS manifest pointing to a direct MP4 URL
+ */
+export function buildSyntheticM3U8(mp4Url: string, title?: string): string {
+  return [
+    '#EXTM3U',
+    '#EXT-X-VERSION:3',
+    '#EXT-X-TARGETDURATION:0',
+    `#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720`,
+    mp4Url,
+  ].join('\n');
+}

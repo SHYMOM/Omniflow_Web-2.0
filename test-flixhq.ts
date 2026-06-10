@@ -8,7 +8,7 @@ async function test() {
     if(search.results.length > 0) {
       const info = await flix.fetchMediaInfo(search.results[0].id);
       console.log('Info:', info);
-      const sources = await flix.fetchEpisodeSources(info.episodes[0].id, info.id);
+      const sources = await flix.fetchEpisodeSources(info.episodes?.[0]?.id || '', info.id);
       console.log('Sources:', sources);
     }
   } catch(e) {

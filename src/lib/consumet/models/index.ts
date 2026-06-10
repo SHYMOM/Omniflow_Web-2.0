@@ -46,6 +46,7 @@ import {
   MediaFormat,
   ProxyConfig,
   IStaff,
+  IAudioTrack,
 } from './types';
 import { LibgenBookObject, GetComicsComicsObject } from './type-objects';
 
@@ -102,4 +103,5 @@ export type {
   ITitle,
   ProxyConfig,
   IStaff,
+  IAudioTrack,
 };

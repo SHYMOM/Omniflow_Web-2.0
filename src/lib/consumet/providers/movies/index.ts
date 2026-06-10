@@ -7,6 +7,9 @@ import MovieHdWatch from './movidhdwatch';
 import SmashyStream from './smashystream';
 import Turkish from './turkish123';
 import ViewAsian from './viewAsian';
+import Cineby from './cineby';
+import XPrime from './xprime';
+import Flixer from './flixer';
 
 export default {
   DramaCool,
@@ -18,4 +21,7 @@ export default {
   SmashyStream,
   ViewAsian,
   Turkish,
+  Cineby,
+  XPrime,
+  Flixer,
 };

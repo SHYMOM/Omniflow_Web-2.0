@@ -23,12 +23,14 @@ import {
   UserCheck
 } from 'lucide-react';
 import AdsManager from '@/components/admin/AdsManager';
+import { useUserStore } from '@/store/userStore';
 
 
+
+const supabase = createClient();
 
 export default function AdminPage() {
   const router = useRouter();
-  const supabase = createClient();
 
   // Auth state — driven entirely by Supabase, not localStorage
   const [adminStatus, setAdminStatus] = useState<'loading' | 'unauthorized' | 'authorized'>('loading');
@@ -65,19 +67,45 @@ export default function AdminPage() {
   const [cacheSearch, setCacheSearch] = useState('');
 
 
-  // Verify admin status directly from Supabase on mount
+  const storeUser = useUserStore((s) => s.user);
+
+  // Verify admin status directly from Supabase on mount, using Zustand user as initial source of truth
   useEffect(() => {
     let cancelled = false;
+    
+    // If the Zustand store already knows the user is an admin, show the UI immediately to prevent blocking
+    if (storeUser && storeUser.role === 'admin') {
+      setAdminUserId(storeUser.id);
+      setAdminStatus('authorized');
+    }
+
     const verifyAdmin = async () => {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) { if (!cancelled) setAdminStatus('unauthorized'); return; }
+        const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+        if (userError || !authUser) {
+          if (!cancelled) {
+            setAdminStatus('unauthorized');
+            router.push('/');
+          }
+          return;
+        }
 
-        const { data: profile } = await supabase
-          .from('profiles').select('role').eq('id', authUser.id).single();
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authUser.id)
+          .single();
+
+        if (profileError || !profile) {
+          if (!cancelled) {
+            setAdminStatus('unauthorized');
+            router.push('/');
+          }
+          return;
+        }
 
         if (!cancelled) {
-          if (profile?.role === 'admin') {
+          if (profile.role === 'admin') {
             setAdminUserId(authUser.id);
             setAdminStatus('authorized');
           } else {
@@ -85,13 +113,24 @@ export default function AdminPage() {
             router.push('/');
           }
         }
-      } catch {
-        if (!cancelled) setAdminStatus('unauthorized');
+      } catch (err) {
+        console.error('[AdminPage] Verification error:', err);
+        if (!cancelled) {
+          // If the network request fails, but the client store has admin role, we can allow it as a fallback
+          if (storeUser && storeUser.role === 'admin') {
+            setAdminUserId(storeUser.id);
+            setAdminStatus('authorized');
+          } else {
+            setAdminStatus('unauthorized');
+            router.push('/');
+          }
+        }
       }
     };
+
     verifyAdmin();
     return () => { cancelled = true; };
-  }, []);
+  }, [storeUser, supabase, router]);
 
   // Fetch all stats (parallel for speed)
   const fetchStats = async () => {
