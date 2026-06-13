@@ -83,6 +83,7 @@ export function mapAniListToMediaItem(item: AniListMedia): MediaItem {
     tags: item.tags?.map(t => t.name) || [],
     episodeCount: item.episodes ?? undefined,
     chapterCount: item.chapters ?? undefined,
+    volumeCount: item.volumes ?? undefined,
     duration: item.duration ? `${item.duration} min` : undefined,
     season: item.season ?? undefined,
     seasonYear: item.seasonYear ?? undefined,
@@ -531,6 +532,45 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
       }
     } catch (err) {
       console.error('TMDB episode fetch failed', err);
+    }
+  } else if (type === 'manga') {
+    try {
+      const { MANGA } = await import('@/lib/consumet');
+      const mangadex = new MANGA.MangaDex();
+      
+      let title = '';
+      try {
+        const { getMangaDetail } = await import('./anilist');
+        const media = await getMangaDetail(String(numericId));
+        title = media.title?.english || media.title?.romaji || media.title?.native || '';
+      } catch (e) {}
+
+      if (title) {
+        const searchRes = await mangadex.search(title);
+        if (searchRes.results && searchRes.results.length > 0) {
+          const info = await mangadex.fetchMangaInfo(searchRes.results[0].id);
+          if (info.chapters && info.chapters.length > 0) {
+            // Deduplicate chapters by number to avoid showing duplicate scanlations
+            const chapterMap = new Map();
+            for (const ch of info.chapters) {
+              const num = parseFloat(ch.chapterNumber) || parseFloat(ch.id) || 0;
+              if (!chapterMap.has(num)) {
+                chapterMap.set(num, {
+                  id: ch.id,
+                  number: num,
+                  title: ch.title && ch.title !== ch.chapterNumber ? ch.title : `Chapter ${ch.chapterNumber || num}`,
+                  thumbnail: null,
+                  aired: ch.releasedDate || null,
+                  pages: ch.pages || 0
+                });
+              }
+            }
+            return Array.from(chapterMap.values()).sort((a: any, b: any) => a.number - b.number);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Manga chapter fetch failed via MangaDex', err);
     }
   }
 

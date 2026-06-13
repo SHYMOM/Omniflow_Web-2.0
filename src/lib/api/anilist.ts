@@ -25,7 +25,10 @@ export async function queryAniList<T>(query: string, variables: Record<string, u
     }
   }
 
-  const { data } = await axios.post<T>(ANILIST_PROXY, { query, variables });
+  // Server-side: use direct AniList API (no relative URL available)
+  const { data } = await axios.post<T>('https://graphql.anilist.co', { query, variables }, {
+    headers: { 'Content-Type': 'application/json' },
+  });
   return data;
 }
 
@@ -499,7 +502,7 @@ export async function getPopularManga(perPage = 18, page = 1, hideAdult = true):
     query ($perPage: Int, $page: Int, $hideAdult: Boolean) {
       Page(perPage: $perPage, page: $page) {
         media(type: MANGA, sort: POPULARITY_DESC, isAdult: $hideAdult) {
-          id idMal title { romaji english native }
+          id idMal type title { romaji english native }
           coverImage { extraLarge large }
           format status averageScore
           genres chapters volumes
@@ -516,7 +519,7 @@ export async function getTrendingManga(perPage = 18, page = 1, hideAdult = true)
     query ($perPage: Int, $page: Int, $hideAdult: Boolean) {
       Page(perPage: $perPage, page: $page) {
         media(type: MANGA, sort: TRENDING_DESC, isAdult: $hideAdult) {
-          id idMal title { romaji english native }
+          id idMal type title { romaji english native }
           coverImage { extraLarge large }
           format status averageScore chapters volumes
           genres
@@ -557,11 +560,15 @@ export async function getMangaDetail(id: string): Promise<AniListMedia> {
   const query = `
     query ($id: Int) {
       Media(id: $id, type: MANGA) {
-        id idMal title { romaji english native }
+        id idMal type title { romaji english native }
         description(asHtml: false)
         coverImage { extraLarge large } bannerImage
-        format status season seasonYear averageScore meanScore
-        genres chapters volumes source
+        format status averageScore meanScore
+        genres chapters volumes source countryOfOrigin
+        synonyms hashtag
+        tags { name rank isMediaSpoiler }
+        startDate { year month day }
+        endDate { year month day }
         externalLinks { id url site }
         characters(sort: ROLE, perPage: 25) {
           edges {

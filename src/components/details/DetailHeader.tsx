@@ -32,7 +32,7 @@ export default function DetailHeader({ media, mediaType }: DetailHeaderProps) {
   const mediaId = item.id;
   const inWatchlist = isInWatchlist(mediaId);
 
-  const watchHref = mediaType === 'manga' ? `/read/${item.id}/1` : `/watch?id=${item.id}&type=${mediaType}&ep=1`;
+  const watchHref = mediaType === 'manga' ? `/manga/${item.id}` : `/watch?id=${item.id}&type=${mediaType}&ep=1`;
 
   const handleWatchlist = () => {
     if (inWatchlist) {

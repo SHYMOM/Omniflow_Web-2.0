@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
-import { getTopUpcomingAnime } from '@/lib/api/anilist';
+import { getTopUpcomingAnime, getTrendingManga } from '@/lib/api/anilist';
 import { getHybridTrending } from '@/lib/api/hybrid';
 import { useUserStore } from '@/store/userStore';
 import HeroBanner from '@/components/home/HeroBanner';
@@ -42,8 +42,22 @@ export default function HomePage() {
     getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
   });
 
+  // Infinite Query for Trending Manga
+  const {
+    data: mangaPages,
+    isLoading: mangaLoading,
+    fetchNextPage: fetchNextManga,
+    hasNextPage: hasNextManga
+  } = useInfiniteQuery({
+    queryKey: ['manga', 'trending-infinite', hideAdult],
+    queryFn: ({ pageParam = 1 }) => getTrendingManga(12, pageParam, hideAdult),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => lastPage.length > 0 ? allPages.length + 1 : undefined,
+  });
+
   const trendingItems = trendingPages?.pages.flat() || [];
   const upcomingItems = upcomingPages?.pages.flat() || [];
+  const mangaItems = mangaPages?.pages.flat() || [];
 
   return (
     <div className="min-h-screen">
@@ -55,9 +69,19 @@ export default function HomePage() {
 
       {/* Trending Row */}
       <TrendingRow 
+        title="Trending Now"
         items={trendingItems} 
         loading={trendingLoading} 
         onLoadMore={() => hasNextTrending && fetchNextTrending()} 
+      />
+
+      {/* Trending Manga */}
+      <TrendingRow 
+        title="Trending Manga & Novels"
+        href="/manga"
+        items={mangaItems} 
+        loading={mangaLoading} 
+        onLoadMore={() => hasNextManga && fetchNextManga()} 
       />
 
       {/* Main content area with sidebar */}

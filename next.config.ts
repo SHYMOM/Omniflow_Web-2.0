@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.0.101"],
+  allowedDevOrigins: ["192.168.0.123"],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'image.tmdb.org' },
@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'shikimori.one' },
       { protocol: 'https', hostname: 'api.dicebear.com' },
       { protocol: 'https', hostname: 'ui-avatars.com' },
+      { protocol: 'https', hostname: 'uploads.mangadex.org' },
+      { protocol: 'https', hostname: 'mangadex.org' },
+      { protocol: 'https', hostname: 'meo.comick.pictures' },
+      { protocol: 'https', hostname: 'mangapill.com' },
+      { protocol: 'https', hostname: 'mangafire.to' },
     ],
   },
 };

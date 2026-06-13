@@ -45,7 +45,7 @@ export default function HoverCard({ media, parentRef, onMouseEnter, onMouseLeave
 
   const isManga = media.type === 'manga';
   const href = isManga ? `/manga/${media.id}` : media.type === 'movie' ? `/movies/${media.id}` : media.type === 'tv' ? `/tv/${media.id}` : `/anime/${media.id}`;
-  const watchHref = isManga ? `/read/${media.id}/1` : `/watch?id=${media.id}&type=${media.type}&ep=1`;
+  const watchHref = isManga ? `/manga/${media.id}` : `/watch?id=${media.id}&type=${media.type}&ep=1`;
 
   const trailerYoutubeId = media.trailerYoutubeId || null;
   const bgUrl = trailerYoutubeId
@@ -171,11 +171,11 @@ export default function HoverCard({ media, parentRef, onMouseEnter, onMouseLeave
           
           <div className="flex flex-wrap gap-1.5 mb-3">
             <TypeBadge label={formatLabel} />
-            {isAiring && <TypeBadge label="AIRING" variant="green" />}
-            {genres.map(g => <TypeBadge key={g} label={g} />)}
+            <TypeBadge label={isAiring ? "RELEASING" : media.status || "FINISHED"} variant={isAiring ? "green" : "default"} />
+            {genres.slice(0, 2).map(g => <TypeBadge key={g} label={g} />)}
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-text-secondary mb-3">
+          <div className="flex items-center gap-3 text-xs text-text-secondary mb-3 flex-wrap">
             {scoreLabel !== 'N/A' && (
               <span className="flex items-center gap-1 text-white font-medium">
                 <Star size={12} className="text-accent-gold" fill="currentColor" /> {scoreLabel}
@@ -183,8 +183,8 @@ export default function HoverCard({ media, parentRef, onMouseEnter, onMouseLeave
             )}
             {isManga ? (
               <>
-                <span className="flex items-center gap-1"><BookOpen size={12} /> {media.chapterCount || '?'} Chapters</span>
-                <span className="flex items-center gap-1"><Layers size={12} /> {media.volumeCount || '?'} Volumes</span>
+                {media.chapterCount ? <span className="flex items-center gap-1"><BookOpen size={12} /> {media.chapterCount} Ch</span> : null}
+                {media.volumeCount ? <span className="flex items-center gap-1"><Layers size={12} /> {media.volumeCount} Vol</span> : null}
               </>
             ) : (
               <span className="flex items-center gap-1"><Clock size={12} /> {durationLabel}</span>
@@ -192,14 +192,18 @@ export default function HoverCard({ media, parentRef, onMouseEnter, onMouseLeave
             <span className="flex items-center gap-1"><Calendar size={12} /> {dateLabel}</span>
           </div>
 
-          <p className="text-xs text-text-secondary line-clamp-3 mb-4 leading-relaxed">{description}</p>
+          <p className="text-xs text-text-secondary line-clamp-3 mb-4 leading-relaxed">{description || "No synopsis available."}</p>
 
           <div className="flex gap-2">
             <Link
               href={watchHref}
               className="flex-1 flex items-center justify-center gap-2 bg-white text-black font-bold text-xs py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
             >
-              {isManga ? <BookOpen size={14} /> : <Play size={14} fill="currentColor" />} {isManga ? 'Read now' : 'Watch now'}
+              {isManga ? (
+                <><BookOpen size={14} /> Read now</>
+              ) : (
+                <><Play size={14} fill="currentColor" /> Watch now</>
+              )}
             </Link>
             <button className="p-2.5 rounded-lg bg-surface border border-border hover:bg-surface-hover transition-colors text-text-secondary hover:text-white cursor-pointer">
               <Bookmark size={16} />
