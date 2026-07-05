@@ -19,12 +19,10 @@ export interface ProviderEntry<T = unknown> {
  * Central registry that manages provider execution priority,
  * health tracking, and cascading fallback logic.
  *
- * Usage:
- *   const registry = new ProviderRegistry();
- *   const result = await registry.executeWithCascade<IStreamResult>([
- *     { name: 'zoro', priority: 0, mediaTypes: ['anime'], execute: () => zoroExtract() },
- *     { name: 'gogoanime', priority: 1, mediaTypes: ['anime'], execute: () => gogoExtract() },
- *   ]);
+ * Uses TRUE concurrent execution: all providers fire at T=0 and
+ * the first one to return a valid result wins immediately,
+ * regardless of priority tier. Tiers are ignored for resolution
+ * speed — they only affect circuit breaker ordering.
  */
 export class ProviderRegistry {
   private circuitBreaker: CircuitBreaker;
@@ -34,97 +32,90 @@ export class ProviderRegistry {
   }
 
   /**
-   * Execute all providers concurrently using a Promise.any approach.
-   * First successful stream wins the race, providing extreme speed like MovieBox.
+   * Execute ALL providers concurrently via Promise.any.
+   * First successful result wins — no tier barriers.
+   * Each provider has a hard per-provider timeout.
    */
   async executeConcurrently<T>(
     providers: ProviderEntry<T>[]
   ): Promise<IProviderResult<T>> {
     const overallStartTime = Date.now();
-    
-    // 1. Fire all provider requests immediately at T=0 for maximum concurrency
-    const executions = providers.map((provider) => {
-      const promise = (async () => {
-        if (!this.circuitBreaker.isAvailable(provider.name)) {
-          console.warn(`[ProviderRegistry] Skipping ${provider.name} — circuit OPEN`);
-          throw new Error(`Circuit OPEN for ${provider.name}`);
-        }
 
-        if (this.circuitBreaker.getState(provider.name) === 'HALF_OPEN') {
-          this.circuitBreaker.recordProbeAttempt(provider.name);
-        }
-
-        const startTime = Date.now();
-        try {
-          const result = await Promise.race([
-            provider.execute(),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`Provider ${provider.name} timed out`)), PROVIDER_TIMEOUT_MS)
-            ),
-          ]);
-
-          const latencyMs = Date.now() - startTime;
-          
-          if ((result as any)?.success === false) {
-             throw new Error(`${provider.name} returned success: false`);
-          }
-
-          this.circuitBreaker.recordSuccess(provider.name);
-          console.log(`[ProviderRegistry] ✓ ${provider.name} succeeded in ${latencyMs}ms`);
-
-          return {
-            success: true,
-            provider: provider.name,
-            data: result,
-            latencyMs,
-          } as IProviderResult<T>;
-        } catch (err) {
-          const latencyMs = Date.now() - startTime;
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          this.circuitBreaker.recordFailure(provider.name);
-          console.warn(`[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`);
-          logger.error('ProviderRegistry', `Provider ${provider.name} failed`, err);
-          throw new Error(`${provider.name}: ${errorMsg}`);
-        }
-      })();
-      // Attach a no-op catch to prevent unhandled rejection warnings when
-      // a lower-priority provider rejects after we've already resolved a winner.
-      promise.catch(() => {});
-      return promise;
-    });
-
-    // 2. Group the execution promises by priority tier
-    const tiers = new Map<number, Promise<IProviderResult<T>>[]>();
-    for (let i = 0; i < providers.length; i++) {
-      const priority = providers[i].priority;
-      if (!tiers.has(priority)) tiers.set(priority, []);
-      tiers.get(priority)!.push(executions[i]);
+    // If no providers, fail fast
+    if (providers.length === 0) {
+      return {
+        success: false,
+        provider: 'none',
+        error: 'No providers registered',
+        latencyMs: 0,
+      };
     }
 
-    const sortedPriorities = Array.from(tiers.keys()).sort((a, b) => a - b);
+    // Fire ALL providers at T=0 — true concurrency, no tier blocking
+    const promises = providers.map((provider) =>
+      this.executeSingle(provider)
+    );
 
-    // 3. Resolve tiers sequentially. 
-    // Since all promises are already running, if a lower tier finished earlier, 
-    // it will resolve instantly when its tier is reached.
-    for (const priority of sortedPriorities) {
-      try {
-        const tierPromises = tiers.get(priority)!;
-        const winner = await Promise.any(tierPromises);
-        console.log(`[ProviderRegistry] 🏎️ Race won by ${winner.provider} in ${Date.now() - overallStartTime}ms (Tier ${priority})`);
-        return winner;
-      } catch (aggregateError) {
-        // All providers in this tier failed, gracefully fall back to the next tier
-        continue;
+    // Promise.any: first success wins immediately
+    // If all fail, catch and return failure
+    try {
+      const winner = await Promise.any(promises);
+      console.log(`[ProviderRegistry] 🏎️ Race won by ${winner.provider} in ${Date.now() - overallStartTime}ms`);
+      return winner;
+    } catch {
+      console.error(`[ProviderRegistry] ✗ All ${providers.length} providers failed in ${Date.now() - overallStartTime}ms`);
+      return {
+        success: false,
+        provider: 'none',
+        error: 'All providers failed',
+        latencyMs: Date.now() - overallStartTime,
+      };
+    }
+  }
+
+  private async executeSingle<T>(
+    provider: ProviderEntry<T>
+  ): Promise<IProviderResult<T>> {
+    if (!this.circuitBreaker.isAvailable(provider.name)) {
+      throw new Error(`Circuit OPEN for ${provider.name}`);
+    }
+
+    if (this.circuitBreaker.getState(provider.name) === 'HALF_OPEN') {
+      this.circuitBreaker.recordProbeAttempt(provider.name);
+    }
+
+    const startTime = Date.now();
+    try {
+      const result = await Promise.race([
+        provider.execute(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Provider ${provider.name} timed out`)), PROVIDER_TIMEOUT_MS)
+        ),
+      ]);
+
+      const latencyMs = Date.now() - startTime;
+
+      if ((result as any)?.success === false) {
+        throw new Error(`${provider.name} returned success: false`);
       }
-    }
 
-    // If we exhaust all tiers and everything failed
-    return {
-      success: false,
-      provider: 'none',
-      error: 'All providers failed concurrently across all tiers',
-      latencyMs: 0,
-    };
+      this.circuitBreaker.recordSuccess(provider.name);
+      console.log(`[ProviderRegistry] ✓ ${provider.name} succeeded in ${latencyMs}ms`);
+
+      return {
+        success: true,
+        provider: provider.name,
+        data: result,
+        latencyMs,
+      } as IProviderResult<T>;
+    } catch (err) {
+      const latencyMs = Date.now() - startTime;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.circuitBreaker.recordFailure(provider.name);
+      console.warn(`[ProviderRegistry] ✗ ${provider.name} failed in ${latencyMs}ms: ${errorMsg}`);
+      logger.error('ProviderRegistry', `Provider ${provider.name} failed`, err);
+      throw new Error(`${provider.name}: ${errorMsg}`);
+    }
   }
 
   /**

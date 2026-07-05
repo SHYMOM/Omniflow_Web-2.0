@@ -3,6 +3,7 @@ import axios from 'axios';
 import { supabase } from '@/lib/supabase';
 import { expandQuery } from './query-expander';
 import { StealthHttpClient } from './stealth-client';
+import { PLAYWRIGHT_ENABLED } from './extraction-config';
 import { logger } from '../logger';
 
 const stealthClient = new StealthHttpClient();
@@ -162,15 +163,16 @@ export class UniversalAggregatorService {
     const allTasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[] = [];
     const topQueries = queries.slice(0, 2);
 
-    // CORE SCRAPERS (Highly reliable, fast, API-based)
+    // ═══ CORE EXTRACTION SERVICES (each as independent task, not wrapped in one) ═══
+
+    // Anime: Use AnimeExtractionService which internally cascades through providers
     if (mediaType === 'anime') {
-      const coreAnimePromise = (async () => {
+      const animeCoreTask = (async () => {
         const streams: UniversalStream[] = [];
         const subtitles: UniversalSubtitle[] = [];
         try {
           const { AnimeExtractionService } = await import('./anime-extraction.service');
           const animeService = new AnimeExtractionService();
-          
           const coreAnime = await animeService.extractSources({
             mediaId,
             title: primaryTitle,
@@ -183,7 +185,6 @@ export class UniversalAggregatorService {
               const lang = src.language || this.classifyLanguage(`${primaryTitle} ${src.quality}`);
               let referer = src.referer || coreAnime.headers?.Referer || '';
               if (!referer && coreAnime.provider?.includes('pahe')) referer = 'https://animepahe.com/';
-              
               streams.push({
                 language: lang,
                 video_url: src.url,
@@ -203,18 +204,52 @@ export class UniversalAggregatorService {
         }
         return { streams, subtitles, provider: 'core-anime' };
       })();
-      allTasks.push(coreAnimePromise);
-    } else {
+      allTasks.push(animeCoreTask);
+
+      // Anime embed fallback via Cinepro (if TMDB ID is available from query expansion)
       if (tmdbId) {
-        const coreMoviePromise = (async () => {
+        const animeCineproTask = (async () => {
           const streams: UniversalStream[] = [];
           const subtitles: UniversalSubtitle[] = [];
           try {
             const { CineproAggregator } = await import('./cinepro-aggregator');
             const cinepro = new CineproAggregator();
-            
-            const coreMovie = await (mediaType === 'movie' 
-              ? cinepro.scrapeMovie(tmdbId, finalImdbId) 
+            const coreMovie = await cinepro.scrapeSeries(tmdbId, season, episode, finalImdbId);
+            if (coreMovie.sources && coreMovie.sources.length > 0) {
+              coreMovie.sources.forEach(src => {
+                const lang = this.classifyLanguage(`${primaryTitle} ${src.url}`);
+                streams.push({
+                  language: lang,
+                  video_url: src.url,
+                  video_type: src.isM3U8 ? 'm3u8' : 'mp4',
+                  source_name: src.provider?.id ? `cinepro-${src.provider.id}` : 'cinepro-core',
+                  referer: src.referer || ''
+                });
+              });
+              if (coreMovie.subtitles) {
+                coreMovie.subtitles.forEach(sub => {
+                  subtitles.push({ label: sub.label, url: sub.url, lang: sub.lang });
+                });
+              }
+            }
+          } catch (e) {
+            console.error('[Anime Cinepro] error:', e);
+          }
+          return { streams, subtitles, provider: 'anime-cinepro' };
+        })();
+        allTasks.push(animeCineproTask);
+      }
+    } else {
+      // Movie/TV: Cinepro core
+      if (tmdbId) {
+        const coreMovieTask = (async () => {
+          const streams: UniversalStream[] = [];
+          const subtitles: UniversalSubtitle[] = [];
+          try {
+            const { CineproAggregator } = await import('./cinepro-aggregator');
+            const cinepro = new CineproAggregator();
+            const coreMovie = await (mediaType === 'movie'
+              ? cinepro.scrapeMovie(tmdbId, finalImdbId)
               : cinepro.scrapeSeries(tmdbId, season, episode, finalImdbId)
             );
             if (coreMovie.sources && coreMovie.sources.length > 0) {
@@ -239,13 +274,13 @@ export class UniversalAggregatorService {
           }
           return { streams, subtitles, provider: 'cinepro' };
         })();
-        allTasks.push(coreMoviePromise);
+        allTasks.push(coreMovieTask);
       }
+    }
 
-    // EMBED PROVIDER SCRAPER (runs independently via playwright network interception)
-    // Runs using IMDB ID, but falls back to TMDB ID if IMDB is not found.
+    // EMBED PROVIDER SCRAPER (runs via Playwright network interception for IMDB/TMDB IDs)
     const scrapeTargetId = finalImdbId || tmdbId;
-    if (scrapeTargetId && (mediaType === 'movie' || mediaType === 'tv')) {
+    if (scrapeTargetId && (mediaType === 'movie' || mediaType === 'tv' || mediaType === 'anime') && PLAYWRIGHT_ENABLED) {
       const embedTask = (async () => {
         const streams: UniversalStream[] = [];
         const subtitles: UniversalSubtitle[] = [];
@@ -280,31 +315,32 @@ export class UniversalAggregatorService {
       })();
       allTasks.push(embedTask);
     }
-    }
 
-    // PLAYWRIGHT SCRAPERS (Secondary, slower, runs concurrently)
-    if (mediaType === 'anime') {
-      topQueries.forEach(query => {
-        allTasks.push(
-          this.scrapeAnimePahe(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'animepahe' })),
-          this.scrapeAllWish(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'allwish' })),
-          this.scrapeAnimeKhor(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'animekhor' }))
-        );
-      });
-    } else if (mediaType === 'movie' || mediaType === 'tv') {
-      topQueries.forEach(query => {
-        allTasks.push(
-          this.scrapeVegamovies(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'vegamovies' })),
-          this.scrapeKatmovieHD(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'katmoviehd' }))
-        );
-      });
-    } else if (mediaType === 'kdrama') {
-      topQueries.forEach(query => {
-        allTasks.push(
-          this.scrapeKissKH(query, episode).then(res => ({ streams: res.streams, subtitles: res.subtitles, provider: 'kisskh' })),
-          this.scrapeDramaday(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'dramaday' }))
-        );
-      });
+    // PLAYWRIGHT SCRAPERS (Secondary, slower — only if PLAYWRIGHT_ENABLED)
+    if (PLAYWRIGHT_ENABLED) {
+      if (mediaType === 'anime') {
+        topQueries.forEach(query => {
+          allTasks.push(
+            this.scrapeAnimePahe(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'animepahe' })),
+            this.scrapeAllWish(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'allwish' })),
+            this.scrapeAnimeKhor(query, episode).then(s => ({ streams: s, subtitles: [], provider: 'animekhor' }))
+          );
+        });
+      } else if (mediaType === 'movie' || mediaType === 'tv') {
+        topQueries.forEach(query => {
+          allTasks.push(
+            this.scrapeVegamovies(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'vegamovies' })),
+            this.scrapeKatmovieHD(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'katmoviehd' }))
+          );
+        });
+      } else if (mediaType === 'kdrama') {
+        topQueries.forEach(query => {
+          allTasks.push(
+            this.scrapeKissKH(query, episode).then(res => ({ streams: res.streams, subtitles: res.subtitles, provider: 'kisskh' })),
+            this.scrapeDramaday(query, season, episode).then(s => ({ streams: s, subtitles: [], provider: 'dramaday' }))
+          );
+        });
+      }
     }
 
     // STREMIO ADDON FALLBACK — works for movies, tv, anime with IMDB IDs
@@ -339,7 +375,7 @@ export class UniversalAggregatorService {
       allTasks.push(stremioTask);
     }
 
-    // Custom helper for first-win resolver with quality/duration gating
+    // Custom helper for first-win resolver — fast path (NO blocking HLS validation)
     const firstSuccess = (
       tasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[],
       timeoutMs: number
@@ -360,33 +396,14 @@ export class UniversalAggregatorService {
           p.then(async (res) => {
             completedCount++;
             if (res && res.streams && res.streams.length > 0) {
-              // Perform quality-gate validation on all streams
-              const validStreams: UniversalStream[] = [];
-              for (const stream of res.streams) {
-                const check = await this.validateHLSPresentation(stream.video_url, stream.referer, minDurationSec);
-                if (check.valid) {
-                  validStreams.push(stream);
-                } else {
-                  console.warn(`[UniversalAggregator] Rejected stream from ${res.provider}: ${check.reason} (URL: ${stream.video_url})`);
-                }
-              }
-
-              if (validStreams.length > 0) {
-                if (onProgress) onProgress('provider_success', { provider: res.provider, streams: validStreams });
-                successfulResults.push({ streams: validStreams, subtitles: res.subtitles });
-                if (!resolved) {
-                  resolved = true;
-                  clearTimeout(timer);
-                  resolve(successfulResults);
-                }
-              } else {
-                if (completedCount === tasks.length) {
-                  if (!resolved) {
-                    resolved = true;
-                    clearTimeout(timer);
-                    resolve(successfulResults);
-                  }
-                }
+              // Fast path: accept streams immediately without blocking HLS validation.
+              // Quality/duration validation happens in the background cache-update path.
+              if (onProgress) onProgress('provider_success', { provider: res.provider, streams: res.streams });
+              successfulResults.push({ streams: res.streams, subtitles: res.subtitles });
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve(successfulResults);
               }
             } else if (completedCount === tasks.length) {
               if (!resolved) {
@@ -409,8 +426,8 @@ export class UniversalAggregatorService {
       });
     };
 
-    // 4. Wait for the first success (with a higher timeout of 20s to allow playwright to boot)
-    const initialResults = await firstSuccess(allTasks, 20000);
+    // 4. Wait for the first success (hard timeout — don't keep users waiting)
+    const initialResults = await firstSuccess(allTasks, 8000);
     
     // Extract what we found so far to return immediately
     const foundStreams: UniversalStream[] = [];
@@ -575,14 +592,16 @@ export class UniversalAggregatorService {
   }
 
   /**
-   * Helper to inspect titles, source urls, and metadata strings for dub indicators
+   * Normalize language tags for consistent matching.
+   * Providers may return 'eng', 'eng-dub', 'dub', 'sub', 'hin', 'hin-dub', etc.
+   * This maps them all to the canonical set: 'sub', 'eng-dub', 'hin-dub'.
    */
   classifyLanguage(titleOrMeta: string): 'eng-dub' | 'hin-dub' | 'sub' {
     const norm = titleOrMeta.toLowerCase();
-    if (norm.includes('hindi') || norm.includes('hin-dub') || norm.includes('dual audio') || norm.includes('hin')) {
+    if (norm.includes('hindi') || norm.includes('hin-dub') || norm.includes('dual audio') || norm.includes('hin') || norm.includes('hi')) {
       return 'hin-dub';
     }
-    if (norm.includes('dubbed') || norm.includes('eng-dub') || norm.includes('english') || norm.includes('eng') || norm.includes('dub')) {
+    if (norm.includes('dubbed') || norm.includes('eng-dub') || norm.includes('english') || norm.includes('eng') || norm.includes('dub') || norm === 'en') {
       return 'eng-dub';
     }
     return 'sub';

@@ -1,6 +1,6 @@
-import { 
-  getTrendingAnime, searchAniList, getAnimeDetail, 
-  getAnimeByMalId, queryAniList, getAiringSchedule 
+import {
+  getTrendingAnime, searchAniList, getAnimeDetail,
+  getAnimeByMalId, queryAniList, getAiringSchedule
 } from './anilist';
 import type { AniListPageResponse } from '@/types/anilist';
 import { getSchedule, getTopAnime, searchJikan } from './jikan';
@@ -9,6 +9,36 @@ import type { AniListMedia } from '@/types/anilist';
 import type { JikanAnime } from '@/types/jikan';
 import type { TMDBMovie, TMDBTVShow } from '@/types/tmdb';
 import type { MediaItem } from '@/types/media';
+import { logger } from '@/lib/logger';
+
+const TMDB_API_KEY = process.env.TMDB_API_KEY || 'fb7bb23f03b6994dafc674c074d01761';
+const JIKAN_BASE = 'https://api.jikan.moe/v4';
+const TMDB_BASE = 'https://api.themoviedb.org/3';
+
+/** Server-safe direct Jikan fetch (bypasses relative URL issue in server actions) */
+async function directJikanFetch<T>(path: string): Promise<{ data?: T; pagination?: any }> {
+  const url = `${JIKAN_BASE}${path}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    },
+  });
+  if (!res.ok) return {};
+  return res.json();
+}
+
+/** Server-safe direct TMDB fetch (bypasses relative URL issue in server actions) */
+async function directTMDBFetch<T>(path: string): Promise<T | null> {
+  const url = `${TMDB_BASE}${path}${path.includes('?') ? '&' : '?'}api_key=${TMDB_API_KEY}&language=en-US`;
+  try {
+    const res = await fetch(url, { next: { revalidate: 3600 } });
+    if (!res.ok) return null;
+    return res.json();
+  } catch (e) {
+    logger.error('hybrid', `Direct TMDB fetch failed: ${path}`, e);
+    return null;
+  }
+}
 
 // Helper to normalize strings or empty values
 const safeStr = (s?: string | null) => s || '';
@@ -316,13 +346,23 @@ async function fetchTMDBEpisodeThumbnails(animeId: number, isMAL: boolean): Prom
   const thumbnailMap = new Map<number, string>();
   try {
     const source = isMAL ? 'myanimelist' : 'anilist';
-    // 1. Get TMDB mapping from ARM with a fast timeout (2000ms)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const armRes = await fetch(`https://arm.haglund.dev/api/v2/ids?source=${source}&id=${animeId}`, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!armRes.ok) return thumbnailMap;
-    const armData = await armRes.json();
+    // 1. Get TMDB mapping from ARM with retry (5000ms timeout, 2 attempts)
+    let armData: any = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const armRes = await fetch(`https://arm.haglund.dev/api/v2/ids?source=${source}&id=${animeId}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (armRes.ok) {
+          armData = await armRes.json();
+          break;
+        }
+      } catch {
+        if (attempt === 0) await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    if (!armData) return thumbnailMap;
     const tmdbId = armData.themoviedb;
     if (!tmdbId) return thumbnailMap;
 
@@ -442,7 +482,7 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
       console.warn('Zoro episode fetch failed, falling back to Jikan', err);
     }
 
-    // 2. Try Jikan as fallback
+    // 2. Try Jikan as fallback (direct API call, not relative proxy URL)
     try {
       let baseEps: any[] = [];
       let page = 1;
@@ -451,21 +491,18 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
 
       // Fetch all pages of episodes to support 1000+ ep anime
       while (hasNextPage) {
-        const res = await fetch(`/api/jikan/anime/${numericId}/episodes?page=${page}`);
-        if (!res.ok) {
-          console.warn(`Jikan page ${page} returned status ${res.status}`);
+        const baseRes = await directJikanFetch<any>(`/anime/${numericId}/episodes?page=${page}`);
+        if (!baseRes.data) {
+          console.warn(`Jikan page ${page} returned no data`);
           break;
         }
-        const baseRes = await res.json();
-        if (baseRes.data) {
-          baseEps = baseEps.concat(baseRes.data);
-        }
+        baseEps = baseEps.concat(baseRes.data);
         hasNextPage = baseRes.pagination?.has_next_page || false;
         page++;
         if (page > 25) break; // support up to 2500 episodes safely
-        
+
         if (hasNextPage) {
-          await sleep(350); // Avoid hitting Jikan's 3 requests/sec rate limit
+          await sleep(400); // Avoid hitting Jikan's 3 requests/sec rate limit
         }
       }
 
@@ -473,7 +510,7 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
         // Try to fetch episode videos for thumbnails (usually only first 100)
         let videoEps: any[] = [];
         try {
-           const videoRes = await (await fetch(`/api/jikan/anime/${numericId}/episodes/videos`)).json();
+           const videoRes = await directJikanFetch<any>(`/anime/${numericId}/episodes/videos`);
            videoEps = videoRes.data || [];
         } catch(e) {}
 
@@ -494,7 +531,7 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
       console.warn('Jikan episodes failed, falling back to AniList', err);
     }
 
-    // 3. Fallback to AniList
+    // 3. Fallback to AniList (with poster as last-resort thumbnail)
     try {
       const media = await getAnimeDetail(String(numericId));
       if (media && media.episodes) {
@@ -502,37 +539,38 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
         return Array.from({ length: media.episodes }, (_, i) => ({
           number: i + 1,
           title: `Episode ${i + 1}`,
-          thumbnail: tmdbThumbnails.get(i + 1) || media.bannerImage || media.coverImage?.extraLarge || null,
+          thumbnail: tmdbThumbnails.get(i + 1) || null,
           aired: null
         }));
       }
     } catch (err) {
       console.error('AniList episode fallback failed', err);
     }
-  } else if (type === 'tv' || type === 'movie') {
-    // TMDB implementation
+  } else if (type === 'tv') {
+    // TV — direct TMDB API call (not relative proxy)
     try {
-      if (type === 'tv') {
-        const res = await (await fetch(`/api/tmdb/tv/${numericId}/season/${season}`)).json();
-        return res.episodes.map((ep: any) => ({
+      const seasonData = await directTMDBFetch<any>(`/tv/${numericId}/season/${season}`);
+      if (seasonData?.episodes) {
+        return seasonData.episodes.map((ep: any) => ({
           number: ep.episode_number,
           title: ep.name || `Episode ${ep.episode_number}`,
           thumbnail: ep.still_path ? `https://image.tmdb.org/t/p/w300${ep.still_path}` : null,
           aired: ep.air_date,
           overview: ep.overview
         }));
-      } else {
-        // Movies have only one "episode"
-        return [{
-          number: 1,
-          title: 'Full Movie',
-          thumbnail: null,
-          aired: null
-        }];
       }
     } catch (err) {
       console.error('TMDB episode fetch failed', err);
     }
+  } else if (type === 'movie') {
+    // Movies have only one "episode"
+    return [{
+      number: 1,
+      title: 'Full Movie',
+      thumbnail: null,
+      aired: null,
+      overview: null
+    }];
   } else if (type === 'manga') {
     try {
       const { MANGA } = await import('@/lib/consumet');

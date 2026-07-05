@@ -509,9 +509,18 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     }
 
     const isHls = streamUrl.includes('format=m3u8') || (streamUrl.includes('.m3u8') && !streamUrl.includes('format=mp4'));
-    
+
+    // Startup timeout: if video doesn't play within 8s, try fallback
+    let startupTimer: NodeJS.Timeout | null = setTimeout(() => {
+      try { if (!video.paused && !video.ended && video.readyState >= 2) return; } catch {}
+      if (!attemptAutoFallback()) setHasFatalError(true);
+    }, 8000);
+    const clearStartupTimer = () => { if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; } };
+
     const tryPlay = () => {
+      clearStartupTimer();
       setPlaybackReady(true);
+      setIsLoading(false);
       video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     };
 
@@ -536,13 +545,13 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         hlsRetryCountRef.current = 0;
 
         const hls = new Hls({
-          maxMaxBufferLength: 30,
+          maxMaxBufferLength: 15,
           enableWorker: true,
           fragLoadPolicy: {
-            default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 30000, timeoutRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 8000 }, errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 } }
+            default: { maxTimeToFirstByteMs: 5000, maxLoadTimeMs: 10000, timeoutRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 }, errorRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 } }
           },
           manifestLoadPolicy: {
-            default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: { maxNumRetry: 3, retryDelayMs: 1000, maxRetryDelayMs: 4000 }, errorRetry: { maxNumRetry: 3, retryDelayMs: 1000, maxRetryDelayMs: 4000 } }
+            default: { maxTimeToFirstByteMs: 5000, maxLoadTimeMs: 8000, timeoutRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 }, errorRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 } }
           },
         });
         hls.loadSource(streamUrl);
@@ -572,35 +581,13 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
         hls.on(Hls.Events.ERROR, (event: any, data: any) => {
           if (data.fatal) {
-            console.warn(`[HLS] Fatal error type=${data.type} details=${data.details} retry=${hlsRetryCountRef.current}/${HLS_MAX_RETRIES}`);
-            
-            const statusCode = data.response?.code;
-            if (statusCode === 403 || statusCode === 500 || data.details === 'manifestLoadError') {
-                if (!attemptAutoFallback()) setHasFatalError(true);
-                return;
-            }
-            
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                if (hlsRetryCountRef.current < HLS_MAX_RETRIES) {
-                  hlsRetryCountRef.current++;
-                  hls.startLoad();
-                } else {
-                  if (!attemptAutoFallback()) setHasFatalError(true);
-                }
-                break;
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                if (hlsRetryCountRef.current < HLS_MAX_RETRIES) {
-                  hlsRetryCountRef.current++;
-                  hls.recoverMediaError();
-                } else {
-                  if (!attemptAutoFallback()) setHasFatalError(true);
-                }
-                break;
-              default:
-                if (!attemptAutoFallback()) setHasFatalError(true);
-                break;
-            }
+            clearStartupTimer();
+            console.warn(`[HLS] Fatal error type=${data.type} details=${data.details}`);
+
+            // Fast fallback: any fatal error immediately triggers fallback instead of retries
+            setTimeout(() => {
+              if (!attemptAutoFallback()) setHasFatalError(true);
+            }, 500);
           }
         });
 
@@ -665,15 +652,18 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     }
   }, [externalSubtitles]);
 
-  // Subtitle track selection
+  // Subtitle track selection — normalizes language codes for matching
   useEffect(() => {
     if (!videoRef.current) return;
-    
+
+    const normalizeLang = (l: string) => l.toLowerCase().replace(/[^a-z]/g, '').substring(0, 2);
+
     const timer = setTimeout(() => {
-      if (!videoRef.current) return;
-      
-      const tracks = videoRef.current.textTracks;
-      
+      const video = videoRef.current;
+      if (!video) return;
+
+      const tracks = video.textTracks;
+
       if (activeSubtitle.startsWith('hls-')) {
         for (let i = 0; i < tracks.length; i++) tracks[i].mode = 'disabled';
         if (hlsRef.current) hlsRef.current.subtitleTrack = parseInt(activeSubtitle.replace('hls-', ''), 10);
@@ -682,11 +672,27 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         if (hlsRef.current) hlsRef.current.subtitleTrack = -1;
       } else {
         if (hlsRef.current) hlsRef.current.subtitleTrack = -1;
+        const targetNormalized = normalizeLang(activeSubtitle);
         for (let i = 0; i < tracks.length; i++) {
-          tracks[i].mode = tracks[i].language === activeSubtitle ? 'showing' : 'disabled';
+          const trackLang = normalizeLang(tracks[i].language);
+          tracks[i].mode = trackLang === targetNormalized ? 'showing' : 'disabled';
+        }
+        // Retry once after tracks load (for async subtitle file fetches)
+        if (tracks.length > 0) {
+          const retryTimer = setTimeout(() => {
+            if (!videoRef.current) return;
+            const updatedTracks = videoRef.current.textTracks;
+            for (let i = 0; i < updatedTracks.length; i++) {
+              const trackLang = normalizeLang(updatedTracks[i].language);
+              if (trackLang === targetNormalized && updatedTracks[i].mode !== 'showing') {
+                updatedTracks[i].mode = 'showing';
+              }
+            }
+          }, 1500);
+          return () => clearTimeout(retryTimer);
         }
       }
-    }, 100);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [activeSubtitle, subtitles, streamUrl]);
@@ -1528,7 +1534,43 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     );
   };
 
-  // OpenSubtitles Search Panel
+  // OpenSubtitles Search Panel (stateful)
+  const [osQuery, setOsQuery] = useState(mediaTitle || '');
+  const [osResults, setOsResults] = useState<{ lang: string; label: string; url: string }[]>([]);
+  const [osLoading, setOsLoading] = useState(false);
+  const [osSearched, setOsSearched] = useState(false);
+
+  const searchOpenSubtitles = useCallback(async () => {
+    if (!osQuery.trim()) return;
+    setOsLoading(true);
+    setOsSearched(true);
+    try {
+      const params = new URLSearchParams();
+      if (tmdbId) params.set('tmdbId', String(tmdbId));
+      if (imdbId) params.set('imdbId', imdbId);
+      params.set('title', osQuery.trim());
+      if (mediaType === 'tv' || mediaType === 'anime') {
+        params.set('season', String(season));
+        params.set('episode', String(episode));
+      }
+      const res = await fetch(`/api/subtitles/search?${params.toString()}`);
+      const data = await res.json();
+      setOsResults(data.subtitles || []);
+    } catch (e) {
+      console.error('OpenSubtitles search error:', e);
+      setOsResults([]);
+    } finally {
+      setOsLoading(false);
+    }
+  }, [osQuery, tmdbId, imdbId, mediaType, season, episode]);
+
+  const addOpenSubtitle = useCallback((sub: { lang: string; label: string; url: string }) => {
+    setSubtitles(prev => getUniqueSubtitles([...prev, sub]));
+    setActiveSubtitle(sub.lang);
+    setHotSwapToast(`Loaded: ${sub.label}`);
+    setTimeout(() => setHotSwapToast(null), 3000);
+  }, []);
+
   const renderOpenSubtitlesSubMenu = () => {
     return (
       <div className="flex flex-col h-full text-white">
@@ -1553,25 +1595,60 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
           <div className="bg-zinc-900/40 p-4 rounded-xl border border-white/5 text-left">
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Find subtitles from the community. Search results are based on the current title: <strong className="text-white">{mediaTitle}</strong>
+              Find subtitles from the community. Results are based on: <strong className="text-white">{mediaTitle || osQuery}</strong>
             </p>
           </div>
-          
+
           <div className="flex gap-2">
             <input
               type="text"
-              defaultValue={mediaTitle || ''}
-              placeholder="Query"
+              value={osQuery}
+              onChange={e => setOsQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchOpenSubtitles()}
+              placeholder="Search subtitle language..."
               className="flex-1 bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
             />
-            <button className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer">
-              Search
+            <button
+              onClick={searchOpenSubtitles}
+              disabled={osLoading}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
+            >
+              {osLoading ? 'Searching...' : 'Search'}
             </button>
           </div>
 
           <div className="space-y-2 pt-2 text-left">
-            <h5 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-sans">Results</h5>
-            <div className="text-zinc-400 text-xs text-center py-10 font-sans">No external subtitles returned for this query.</div>
+            <h5 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-sans">
+              {osSearched ? `Results (${osResults.length})` : 'Results'}
+            </h5>
+            {osLoading ? (
+              <div className="flex justify-center py-10">
+                <LoadingSpinner size={24} />
+              </div>
+            ) : osResults.length > 0 ? (
+              <div className="space-y-1.5">
+                {osResults.map((sub, i) => (
+                  <button
+                    key={i}
+                    onClick={() => addOpenSubtitle(sub)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-white/5 bg-zinc-900/40 hover:bg-zinc-900/60 text-xs font-bold transition-all cursor-pointer group"
+                  >
+                    <span className="text-white group-hover:text-red-400">{sub.label}</span>
+                    <span className="text-[10px] uppercase font-extrabold text-zinc-400 bg-black/40 px-2 py-0.5 rounded">
+                      {sub.lang}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : osSearched ? (
+              <div className="text-zinc-400 text-xs text-center py-10 font-sans">
+                No subtitles found. Try a different query or check your API key.
+              </div>
+            ) : (
+              <div className="text-zinc-500 text-xs text-center py-10 font-sans">
+                Enter a query and click Search.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1731,8 +1808,12 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
               crossOrigin="anonymous"
               playsInline
             >
-              {subtitles.filter(sub => sub.url && !sub.lang.startsWith('hls-')).map((sub, i) => (
-                <track key={i} label={sub.label} src={sub.url} srcLang={sub.lang} kind="subtitles" default={sub.lang === activeSubtitle} />
+              {/* Only render the active subtitle as a track element.
+                 Others are managed via JS textTracks.mode.
+                 Each track gets a stable key based on its url to avoid
+                 destroying/re-creating tracks on every render. */}
+            {subtitles.filter(sub => sub.url && !sub.lang.startsWith('hls-')).map((sub, i) => (
+                <track key={sub.url || i} label={sub.label} src={sub.url} srcLang={sub.lang} kind="subtitles" default={sub.lang === activeSubtitle} />
               ))}
             </video>
           </>
@@ -1774,7 +1855,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
 
         {/* ⏭️ Skip Intro / Outro Button (p-stream-inspired) */}
         {skipBtnVisible && !adActive && !iframeUrl && (skipBtnAlwaysVisible || showControls) && (
-          <div className="absolute bottom-28 right-4 sm:right-6 z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="absolute bottom-28 right-4 sm:right-6 z-70 animate-in fade-in slide-in-from-bottom-2 duration-200">
             <button
               onClick={() => {
                 if (!videoRef.current || !skipTimes) return;

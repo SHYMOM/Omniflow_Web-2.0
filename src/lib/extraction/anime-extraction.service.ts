@@ -383,82 +383,168 @@ export class AnimeExtractionService {
 
   private async extractFromAnimoye(title: string, episode: number, language: string): Promise<IStreamResult> {
     const animoye = new (ANIME as any).Animoye();
-    const searchRes = await animoye.search(title);
-    if (!searchRes.results?.length) throw new Error(`Animoye: No results`);
 
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched) throw new Error(`Animoye: No matched results`);
+    // Search with language-appropriate variants
+    const queries = [];
+    if (language === 'hin') {
+      queries.push(`${title} Hindi`, `${title} (Dub)`, title);
+    } else if (language === 'eng' || language === 'dub') {
+      queries.push(`${title} (Dub)`, `${title} Dub`, title);
+    } else {
+      queries.push(title, `${title} (Dub)`);
+    }
+
+    let matched;
+    for (const q of queries) {
+      try {
+        const searchRes = await animoye.search(q);
+        if (searchRes.results?.length) {
+          matched = this.findBestMatch(searchRes.results, title);
+          if (matched) break;
+        }
+      } catch (e) {}
+    }
+    if (!matched) throw new Error(`Animoye: No results`);
 
     const info = await animoye.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`Animoye: Episode not found`);
 
     const sources = await animoye.fetchEpisodeSources(targetEp.id);
-    return this.sanitizeSources(sources, 'animoye', 'https://animoye.com/', 'sub');
+    const inferredLang = matched.id?.includes('-dub') || matched.title?.includes('(Dub)') ? 'eng-dub' : 'sub';
+    return this.sanitizeSources(sources, 'animoye', 'https://animoye.com/', inferredLang);
   }
 
   private async extractFromAniwatchX(title: string, episode: number, language: string): Promise<IStreamResult> {
     const aniwatchx = new (ANIME as any).AniwatchX();
-    const searchRes = await aniwatchx.search(title);
-    if (!searchRes.results?.length) throw new Error(`AniwatchX: No results`);
 
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched) throw new Error(`AniwatchX: No matched results`);
+    const queries = [];
+    if (language === 'hin') {
+      queries.push(`${title} Hindi`, `${title} (Dub)`, title);
+    } else if (language === 'eng' || language === 'dub') {
+      queries.push(`${title} (Dub)`, `${title} Dub`, title);
+    } else {
+      queries.push(title, `${title} (Dub)`);
+    }
+
+    let matched;
+    for (const q of queries) {
+      try {
+        const searchRes = await aniwatchx.search(q);
+        if (searchRes.results?.length) {
+          matched = this.findBestMatch(searchRes.results, title);
+          if (matched) break;
+        }
+      } catch (e) {}
+    }
+    if (!matched) throw new Error(`AniwatchX: No results`);
 
     const info = await aniwatchx.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`AniwatchX: Episode not found`);
 
     const sources = await aniwatchx.fetchEpisodeSources(targetEp.id);
-    return this.sanitizeSources(sources, 'aniwatchx', 'https://aniwatchx.to/', 'sub');
+    const inferredLang = matched.id?.includes('-dub') || matched.title?.includes('(Dub)') ? 'eng-dub' : 'sub';
+    return this.sanitizeSources(sources, 'aniwatchx', 'https://aniwatchx.to/', inferredLang);
   }
 
   private async extractFromCKSub(title: string, episode: number, language: string): Promise<IStreamResult> {
     const cksub = new (ANIME as any).CKSub();
-    const searchRes = await cksub.search(title);
-    if (!searchRes.results?.length) throw new Error(`CKSub: No results`);
 
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched) throw new Error(`CKSub: No matched results`);
+    const queries = [];
+    if (language === 'hin') {
+      queries.push(`${title} Hindi`, `${title} (Dub)`, title);
+    } else if (language === 'eng' || language === 'dub') {
+      queries.push(`${title} (Dub)`, `${title} Dub`, title);
+    } else {
+      queries.push(title, `${title} (Dub)`);
+    }
+
+    let matched;
+    for (const q of queries) {
+      try {
+        const searchRes = await cksub.search(q);
+        if (searchRes.results?.length) {
+          matched = this.findBestMatch(searchRes.results, title);
+          if (matched) break;
+        }
+      } catch (e) {}
+    }
+    if (!matched) throw new Error(`CKSub: No results`);
 
     const info = await cksub.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`CKSub: Episode not found`);
 
     const sources = await cksub.fetchEpisodeSources(targetEp.id);
-    return this.sanitizeSources(sources, 'cksub', 'https://cksub.org/', 'sub');
+    const inferredLang = matched.id?.includes('-dub') || matched.title?.includes('(Dub)') ? 'eng-dub' : 'sub';
+    return this.sanitizeSources(sources, 'cksub', 'https://cksub.org/', inferredLang);
   }
 
   private async extractFromDonghuaStream(title: string, episode: number, language: string): Promise<IStreamResult> {
     const ds = new (DONGHUA as any).DonghuaStream();
-    const searchRes = await ds.search(title);
-    if (!searchRes.results?.length) throw new Error(`DonghuaStream: No results`);
 
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched) throw new Error(`DonghuaStream: No matched results`);
+    const queries = [];
+    if (language === 'hin') {
+      queries.push(`${title} Hindi`, `${title} (Dub)`, title);
+    } else if (language === 'eng' || language === 'dub') {
+      queries.push(`${title} (Dub)`, `${title} Dub`, title);
+    } else {
+      queries.push(title, `${title} (Dub)`);
+    }
+
+    let matched;
+    for (const q of queries) {
+      try {
+        const searchRes = await ds.search(q);
+        if (searchRes.results?.length) {
+          matched = this.findBestMatch(searchRes.results, title);
+          if (matched) break;
+        }
+      } catch (e) {}
+    }
+    if (!matched) throw new Error(`DonghuaStream: No results`);
 
     const info = await ds.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`DonghuaStream: Episode not found`);
 
     const sources = await ds.fetchEpisodeSources(targetEp.id);
-    return this.sanitizeSources(sources, 'donghuastream', 'https://donghuastream.org/', 'sub');
+    const inferredLang = matched.id?.includes('-dub') || matched.title?.includes('(Dub)') ? 'eng-dub' : 'sub';
+    return this.sanitizeSources(sources, 'donghuastream', 'https://donghuastream.org/', inferredLang);
   }
 
   private async extractFromLMAnime(title: string, episode: number, language: string): Promise<IStreamResult> {
     const lm = new (DONGHUA as any).LMAnime();
-    const searchRes = await lm.search(title);
-    if (!searchRes.results?.length) throw new Error(`LMAnime: No results`);
 
-    const matched = this.findBestMatch(searchRes.results, title);
-    if (!matched) throw new Error(`LMAnime: No matched results`);
+    const queries = [];
+    if (language === 'hin') {
+      queries.push(`${title} Hindi`, `${title} (Dub)`, title);
+    } else if (language === 'eng' || language === 'dub') {
+      queries.push(`${title} (Dub)`, `${title} Dub`, title);
+    } else {
+      queries.push(title, `${title} (Dub)`);
+    }
+
+    let matched;
+    for (const q of queries) {
+      try {
+        const searchRes = await lm.search(q);
+        if (searchRes.results?.length) {
+          matched = this.findBestMatch(searchRes.results, title);
+          if (matched) break;
+        }
+      } catch (e) {}
+    }
+    if (!matched) throw new Error(`LMAnime: No results`);
 
     const info = await lm.fetchAnimeInfo(matched.id);
     const targetEp = info.episodes?.find((ep: any) => ep.number === episode) || info.episodes?.[episode - 1];
     if (!targetEp?.id) throw new Error(`LMAnime: Episode not found`);
 
     const sources = await lm.fetchEpisodeSources(targetEp.id);
-    return this.sanitizeSources(sources, 'lmanime', 'https://lmanime.com/', 'sub');
+    const inferredLang = matched.id?.includes('-dub') || matched.title?.includes('(Dub)') ? 'eng-dub' : 'sub';
+    return this.sanitizeSources(sources, 'lmanime', 'https://lmanime.com/', inferredLang);
   }
 
   // ─── Utilities ──────────────────────────────────────────────
