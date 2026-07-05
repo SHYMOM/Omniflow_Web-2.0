@@ -65,17 +65,18 @@ function createMangaDexAdapter(): MangaProviderAdapter {
       // Deduplicate by chapter number (keep first occurrence per number)
       const chapterMap = new Map<number, MangaChapter>();
       for (const ch of info.chapters) {
-        const num = parseFloat(ch.chapterNumber) || 0;
+        const c = ch as any;
+        const num = parseFloat(String(c.chapterNumber)) || 0;
         if (num > 0 && !chapterMap.has(num)) {
           chapterMap.set(num, {
-            id: ch.id,
+            id: c.id,
             providerId: 'mangadex',
             providerName: 'MangaDex',
             number: num,
-            title: ch.title && ch.title !== ch.chapterNumber ? ch.title : `Chapter ${ch.chapterNumber || num}`,
-            volumeNumber: ch.volumeNumber,
-            pages: ch.pages || 0,
-            releasedDate: ch.releaseDate || undefined,
+            title: c.title && c.title !== c.chapterNumber ? c.title : `Chapter ${c.chapterNumber || num}`,
+            volumeNumber: c.volumeNumber,
+            pages: c.pages || 0,
+            releasedDate: c.releaseDate || undefined,
           });
         }
       }
@@ -107,17 +108,18 @@ function createComicKAdapter(): MangaProviderAdapter {
       
       const chapterMap = new Map<number, MangaChapter>();
       for (const ch of info.chapters) {
-        const num = parseFloat(ch.chapterNumber) || 0;
+        const c = ch as any;
+        const num = parseFloat(String(c.chapterNumber)) || 0;
         if (num > 0 && !chapterMap.has(num)) {
           chapterMap.set(num, {
-            id: ch.id,
+            id: c.id,
             providerId: 'comick',
             providerName: 'ComicK',
             number: num,
-            title: ch.title && ch.title !== ch.chapterNumber ? ch.title : `Chapter ${ch.chapterNumber || num}`,
-            volumeNumber: ch.volumeNumber,
+            title: c.title && c.title !== c.chapterNumber ? c.title : `Chapter ${c.chapterNumber || num}`,
+            volumeNumber: c.volumeNumber,
             pages: 0,
-            releasedDate: ch.releaseDate || undefined,
+            releasedDate: c.releaseDate || undefined,
           });
         }
       }
@@ -184,7 +186,7 @@ function createMangaFireAdapter(): MangaProviderAdapter {
       if (!info.chapters || info.chapters.length === 0) return [];
       
       return info.chapters.map((ch: any) => {
-        const num = parseFloat(ch.chapterNumber) || 0;
+        const num = parseFloat(String(ch.chapterNumber)) || 0;
         return {
           id: ch.id,
           providerId: 'mangafire',

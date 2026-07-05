@@ -357,7 +357,6 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     }
 
     setIsLoading(true);
-    setAdActive(true);
     setAdFinished(false);
     setPlaybackReady(false);
     setStreamUrl(null);
@@ -513,7 +512,6 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
     
     const tryPlay = () => {
       setPlaybackReady(true);
-      if (adActive) return;
       video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     };
 
@@ -532,8 +530,7 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
       }
       tryPlay();
     } else {
-      const initHls = () => {
-        const Hls = (window as any).Hls;
+      const initHls = (Hls: any) => {
         if (!Hls) return;
 
         hlsRetryCountRef.current = 0;
@@ -612,14 +609,16 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         });
       };
 
-      if ((window as any).Hls) {
-        initHls();
-      } else {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js';
-        script.onload = initHls;
-        document.head.appendChild(script);
-      }
+      import('hls.js').then(module => initHls(module.default)).catch(() => {
+        if ((window as any).Hls) {
+          initHls((window as any).Hls);
+        } else {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js';
+          script.onload = () => initHls((window as any).Hls);
+          document.head.appendChild(script);
+        }
+      });
     }
 
     return () => {

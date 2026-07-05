@@ -553,7 +553,7 @@ export async function getMediaEpisodes(id: string, type: string, season = 1) {
             // Deduplicate chapters by number to avoid showing duplicate scanlations
             const chapterMap = new Map();
             for (const ch of info.chapters) {
-              const num = parseFloat(ch.chapterNumber) || parseFloat(ch.id) || 0;
+              const num = parseFloat(String(ch.chapterNumber)) || parseFloat(String(ch.id)) || 0;
               if (!chapterMap.has(num)) {
                 chapterMap.set(num, {
                   id: ch.id,
