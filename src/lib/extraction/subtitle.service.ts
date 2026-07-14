@@ -28,7 +28,6 @@ export class SubtitleService {
    */
   private static proxyUrl(url: string, isSrt: boolean = false): string {
     if (!url) return '';
-    // If it's already proxied, return it
     if (url.includes('/api/stream/proxy')) return url;
     return `/api/stream/proxy?url=${encodeURIComponent(url)}${isSrt ? '&format=vtt' : ''}`;
   }
@@ -38,7 +37,7 @@ export class SubtitleService {
    */
   static async validateProviderSubtitles(subtitles: IStreamSubtitle[]): Promise<IStreamSubtitle[]> {
     if (!subtitles || !subtitles.length) return [];
-    
+
     return subtitles
       .filter(sub => sub.url && sub.url.length > 5)
       .map(sub => {
@@ -53,7 +52,8 @@ export class SubtitleService {
   }
 
   /**
-   * Source 2: OpenSubtitles REST API (Free tier)
+   * Source 2: OpenSubtitles REST API (Free tier) — with AbortController timeout
+   * and parallel batched downloads instead of sequential N+1 requests.
    */
   static async searchOpenSubtitles(params: SubtitleSearchParams): Promise<IStreamSubtitle[]> {
     const apiKey = process.env.OPENSUBTITLES_API_KEY;
@@ -69,29 +69,46 @@ export class SubtitleService {
         payload.languages = params.languages;
       }
 
+      const searchController = new AbortController();
+      const searchTimeout = setTimeout(() => searchController.abort(), 5000);
       const res = await fetch('https://api.opensubtitles.com/api/v1/subtitles', {
         method: 'GET',
         headers: {
           'Api-Key': apiKey,
           'Content-Type': 'application/json',
           'Accept': 'application/json'
-        }
+        },
+        signal: searchController.signal
       });
+      clearTimeout(searchTimeout);
 
       if (!res.ok) return [];
       const data = await res.json();
-      
-      const subs: IStreamSubtitle[] = [];
+
+      // Collect all file_ids first, then download in parallel batches
+      const downloadTargets: { fileId: number; lang: string }[] = [];
       const seenLangs = new Set<string>();
 
       for (const sub of data.data || []) {
         const lang = this.normalizeLanguageCode(sub.attributes.language);
         if (!seenLangs.has(lang)) {
-          // We must fetch the actual download URL using the file_id
           const fileId = sub.attributes.files[0]?.file_id;
           if (fileId) {
             seenLangs.add(lang);
-            // The download URL has to be fetched via POST to /download
+            downloadTargets.push({ fileId, lang });
+          }
+        }
+      }
+
+      // Fire POST /download requests in parallel with concurrency limit of 3
+      const subs: IStreamSubtitle[] = [];
+      const concurrency = 3;
+      for (let i = 0; i < downloadTargets.length; i += concurrency) {
+        const batch = downloadTargets.slice(i, i + concurrency);
+        const results = await Promise.allSettled(
+          batch.map(async ({ fileId, lang }) => {
+            const dlController = new AbortController();
+            const dlTimeout = setTimeout(() => dlController.abort(), 5000);
             const dlRes = await fetch('https://api.opensubtitles.com/api/v1/download', {
               method: 'POST',
               headers: {
@@ -99,22 +116,27 @@ export class SubtitleService {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
               },
-              body: JSON.stringify({ file_id: fileId })
+              body: JSON.stringify({ file_id: fileId }),
+              signal: dlController.signal
             });
+            clearTimeout(dlTimeout);
 
             if (dlRes.ok) {
               const dlData = await dlRes.json();
               if (dlData.link) {
-                subs.push({
-                  lang,
-                  label: this.getLanguageLabel(lang) + ' (OS)',
-                  url: this.proxyUrl(dlData.link, true)
-                });
+                return { lang, label: this.getLanguageLabel(lang) + ' (OS)', url: this.proxyUrl(dlData.link, true) } as IStreamSubtitle;
               }
             }
+            return null;
+          })
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value) {
+            subs.push(r.value);
           }
         }
       }
+
       return subs;
     } catch (e) {
       console.error('[SubtitleService] OpenSubtitles search failed:', e);
@@ -123,17 +145,21 @@ export class SubtitleService {
   }
 
   /**
-   * Source 3: SubDL API (Free)
+   * Source 3: SubDL API (Free) — with timeout guard
    */
   static async searchSubDL(params: SubtitleSearchParams): Promise<IStreamSubtitle[]> {
     if (!params.tmdbId || !params.season || !params.episode) return [];
-    const apiKey = process.env.SUBDL_API_KEY || ''; // Free tier often works without key
+    const apiKey = process.env.SUBDL_API_KEY || '';
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
       const url = `https://subdl.com/api/v1/subtitles/?api_key=${apiKey}&tmdb_id=${params.tmdbId}&season_number=${params.season}&episode_number=${params.episode}&languages=EN,HI,ES,FR,DE,JA`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
       if (!res.ok) return [];
-      
+
       const data = await res.json();
       if (!data.status || !data.subtitles) return [];
 

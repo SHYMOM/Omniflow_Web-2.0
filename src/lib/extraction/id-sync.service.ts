@@ -5,6 +5,12 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+/**
+ * Request-scoped cache for ARM ID lookups — avoids redundant API calls
+ * within the same request chain. Keyed by `source:id`.
+ */
+const armCache = new Map<string, { tmdbId: string | null; imdbId: string | null }>();
+
 export class IdSyncService {
   /**
    * Syncs AniList, MAL, TMDB, TVDB IDs from Fribb's anime-list-full.json
@@ -87,5 +93,61 @@ export class IdSyncService {
       console.error('[IdSyncService] Resolve IDs error:', err);
       return partialIds;
     }
+  }
+
+  /**
+   * Resolve TMDB ID for anime from a source-specific ID (AniList, MAL).
+   * Checks in-memory cache → Supabase media_id_map → ARM API.
+   * Centralizes the 4 separate ARM calls scattered across the codebase.
+   */
+  static async resolveTmdbId(animeId: string, source: 'anilist' | 'myanimelist' | 'jikan' = 'anilist'): Promise<{ tmdbId: string | null; imdbId: string | null }> {
+    const cleanId = animeId.replace('anilist-', '').replace('mal-', '').replace('jikan-', '');
+    const actualSource = source === 'jikan' ? 'myanimelist' : source;
+    const cacheKey = `${actualSource}:${cleanId}`;
+
+    // 1. Check in-memory request-scoped cache
+    const cached = armCache.get(cacheKey);
+    if (cached) return cached;
+
+    // 2. Check Supabase media_id_map
+    try {
+      const controller2 = new AbortController();
+      const timeout2 = setTimeout(() => controller2.abort(), 2000);
+      const query = source === 'myanimelist' || source === 'jikan'
+        ? supabase.from('media_id_map').select('tmdb_id, imdb_id').eq('mal_id', Number(cleanId))
+        : supabase.from('media_id_map').select('tmdb_id, imdb_id').eq('anilist_id', Number(cleanId));
+      const { data } = await query.maybeSingle();
+      clearTimeout(timeout2);
+      if (data && (data.tmdb_id || data.imdb_id)) {
+        const result = { tmdbId: data.tmdb_id ? String(data.tmdb_id) : null, imdbId: data.imdb_id || null };
+        armCache.set(cacheKey, result);
+        return result;
+      }
+    } catch { /* fall through to ARM API */ }
+
+    // 3. ARM API — 3s total timeout, 1 retry with 500ms delay
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`https://arm.haglund.dev/api/v2/ids?source=${actualSource}&id=${cleanId}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          const result = {
+            tmdbId: data.themoviedb ? String(data.themoviedb) : null,
+            imdbId: data.imdb || null,
+          };
+          armCache.set(cacheKey, result);
+          return result;
+        }
+      } catch {
+        if (attempt === 0) await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    const result = { tmdbId: null, imdbId: null };
+    armCache.set(cacheKey, result);
+    return result;
   }
 }

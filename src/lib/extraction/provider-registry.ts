@@ -35,9 +35,11 @@ export class ProviderRegistry {
    * Execute ALL providers concurrently via Promise.any.
    * First successful result wins — no tier barriers.
    * Each provider has a hard per-provider timeout.
+   * Pass an AbortSignal to cancel remaining providers after a winner is found.
    */
   async executeConcurrently<T>(
-    providers: ProviderEntry<T>[]
+    providers: ProviderEntry<T>[],
+    abortSignal?: AbortSignal
   ): Promise<IProviderResult<T>> {
     const overallStartTime = Date.now();
 
@@ -51,9 +53,19 @@ export class ProviderRegistry {
       };
     }
 
+    // If already aborted, skip
+    if (abortSignal?.aborted) {
+      return {
+        success: false,
+        provider: 'none',
+        error: 'Aborted before execution',
+        latencyMs: 0,
+      };
+    }
+
     // Fire ALL providers at T=0 — true concurrency, no tier blocking
     const promises = providers.map((provider) =>
-      this.executeSingle(provider)
+      this.executeSingle(provider, abortSignal)
     );
 
     // Promise.any: first success wins immediately
@@ -74,8 +86,13 @@ export class ProviderRegistry {
   }
 
   private async executeSingle<T>(
-    provider: ProviderEntry<T>
+    provider: ProviderEntry<T>,
+    abortSignal?: AbortSignal
   ): Promise<IProviderResult<T>> {
+    if (abortSignal?.aborted) {
+      throw new Error(`${provider.name}: aborted before execution`);
+    }
+
     if (!this.circuitBreaker.isAvailable(provider.name)) {
       throw new Error(`Circuit OPEN for ${provider.name}`);
     }
@@ -109,6 +126,11 @@ export class ProviderRegistry {
         latencyMs,
       } as IProviderResult<T>;
     } catch (err) {
+      // Don't count aborted errors as failures
+      if (abortSignal?.aborted) {
+        throw new Error(`${provider.name}: aborted`);
+      }
+
       const latencyMs = Date.now() - startTime;
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.circuitBreaker.recordFailure(provider.name);

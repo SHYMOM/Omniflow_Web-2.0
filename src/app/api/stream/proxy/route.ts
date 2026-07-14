@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         headers,
         referer,
         responseType: 'text',
-        timeout: 15000,
+        timeout: 5000,
       });
 
       let textData = response.data;
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
         headers,
         referer,
         responseType: 'arraybuffer',
-        timeout: 15000,
+        timeout: 5000,
       });
 
       // Detect content type from response or URL extension
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
         headers,
         referer,
         responseType: 'text',
-        timeout: 8000,
+        timeout: 5000,
       });
 
       const parentUrl = new URL(targetUrl);
@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
         headers,
         referer,
         responseType: 'arraybuffer',
-        timeout: 15000,
+        timeout: 5000,
       });
 
       // If the upstream CDN returned an error (404, 403, etc.), forward the error

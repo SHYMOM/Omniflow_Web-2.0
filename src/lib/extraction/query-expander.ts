@@ -173,6 +173,29 @@ export async function expandQuery(
       } catch {
         // Timeout — continue
       }
+
+      // CRITICAL FIX: If TMDB API timed out but we have parsedTmdbId,
+      // don't let primaryTitle fall back to "tmdb-movie-123" - make a second attempt
+      if (!primaryTitle || primaryTitle === String(parsedTmdbId)) {
+        // Try a simpler, faster TMDB call without append_to_response
+        try {
+          const simpleRes = await fetchWithTimeout(
+            `https://api.themoviedb.org/3/${endpointType}/${parsedTmdbId}?api_key=${TMDB_API_KEY}`,
+            { timeout: 2000 }
+          );
+          if (simpleRes?.ok) {
+            const simpleData = await simpleRes.json();
+            if (simpleData.title || simpleData.name) {
+              primaryTitle = simpleData.title || simpleData.name;
+              aliases.add(primaryTitle);
+            }
+          }
+        } catch {
+          // Final fallback: use generic title based on type
+          primaryTitle = type === 'movie' ? `TMDB Movie ${parsedTmdbId}` : `TMDB TV ${parsedTmdbId}`;
+          aliases.add(primaryTitle);
+        }
+      }
     }
 
     const searchAliases = Array.from(aliases).filter(Boolean);

@@ -7,7 +7,7 @@ import type { IRateLimitConfig, ICircuitBreakerConfig } from '@/types/extraction
 // ─── Timeouts ────────────────────────────────────────────────
 
 /** Max time (ms) to wait for a single provider extraction attempt */
-export const PROVIDER_TIMEOUT_MS = 5000;
+export const PROVIDER_TIMEOUT_MS = 4000;
 
 /** Max retries per provider before moving to next in cascade */
 export const MAX_RETRIES = 2;

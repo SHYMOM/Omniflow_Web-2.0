@@ -43,29 +43,82 @@ export class MovieExtractionService {
 
     let releaseYear = new Date().getFullYear();
 
-    try {
-      const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
-      const res = await this.stealthClient.get(
-        `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`,
-        { timeout: 4000 }
-      );
-      
-      const title = res.data?.title || res.data?.name || res.data?.original_title || '';
-      const dateStr = res.data?.release_date || res.data?.first_air_date;
-      if (dateStr) {
-        releaseYear = new Date(dateStr).getFullYear();
+    // Multi-tier fallback strategy for title resolution
+    const tryResolveTitle = async (): Promise<string | null> => {
+      // Tier 1: Full TMDB API with all details
+      try {
+        const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
+        const res = await this.stealthClient.get(
+          `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?append_to_response=alternative_titles&api_key=${TMDB_KEY}`,
+          { timeout: 4000 }
+        );
+
+        const title = res.data?.title || res.data?.name || res.data?.original_title || '';
+        if (title) return title;
+      } catch {
+        // Continue to tier 2
+      }
+
+      // Tier 2: Simple TMDB API call (faster, less likely to timeout)
+      try {
+        const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
+        const res = await this.stealthClient.get(
+          `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`,
+          { timeout: 2000 }
+        );
+
+        const title = res.data?.title || res.data?.name || res.data?.original_title || '';
+        if (title) return title;
+      } catch {
+        // Continue to tier 3
+      }
+
+      // Tier 3: Direct TMDB API call (server-side fallback)
+      try {
+        const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
+        const res = await fetch(
+          `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`,
+          { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(3000) }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const title = data.title || data.name || data.original_title || '';
+          if (title) return title;
+        }
+      } catch {
+        // All tiers failed
+      }
+
+      return null;
+    };
+
+    const title = await tryResolveTitle();
+
+    if (title) {
+      // Also fetch release year if we got a title
+      try {
+        const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
+        const res = await this.stealthClient.get(
+          `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`,
+          { timeout: 2000 }
+        );
+        const dateStr = res.data?.release_date || res.data?.first_air_date;
+        if (dateStr) {
+          releaseYear = new Date(dateStr).getFullYear();
+        }
+      } catch {
+        // Keep default releaseYear
       }
       return { title, releaseYear };
-    } catch (err) {
-      console.warn('[MovieExtraction] TMDB title resolution failed:', err);
     }
 
-    return { title: tmdbId, releaseYear };
+    // Last resort: return TMDB ID as identifier, not "tmdb-movie-123"
+    return { title: `TMDB ${mediaType} ${tmdbId}`, releaseYear };
   }
 
   // ─── Source Extraction ───────────────────────────────────────
 
-  async extractSources(ctx: ExtractionContext): Promise<IStreamResult> {
+  async extractSources(ctx: ExtractionContext, abortSignal?: AbortSignal): Promise<IStreamResult> {
     const mediaType = ctx.mediaType as 'movie' | 'tv';
     const tmdbId = ctx.mediaId
       .replace('tmdb-movie-', '')
@@ -213,7 +266,7 @@ export class MovieExtractionService {
       });
     }
 
-    const result = await this.registry.executeConcurrently(providers);
+    const result = await this.registry.executeConcurrently(providers, abortSignal);
 
     if (result.success && result.data) {
       // Set default available languages immediately to avoid blocking the client

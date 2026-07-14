@@ -35,7 +35,7 @@ export class CineproAggregator {
       
       const mappedSources: IStreamSource[] = result.sources.map((s: any) => {
         let referer = s.headers?.Referer || s.headers?.referer || '';
-        if (!referer && s.provider?.id === 'vidsrc') referer = 'https://cloudnestra.com/';
+        if (!referer && s.provider?.id === 'vidsrc') referer = 'https://vsembed.ru/';
         if (!referer && s.provider?.id === 'vidnest') referer = 'https://vidnest.fun/';
         if (!referer && s.provider?.id === 'vidapi') referer = 'https://brightpathsignals.com/';
         if (!referer && s.provider?.id === 'vidlink') referer = 'https://vidlink.pro/';
@@ -45,7 +45,8 @@ export class CineproAggregator {
           quality: this.mapQuality(s.quality),
           isM3U8: s.type === 'hls',
           referer,
-          provider: s.provider
+          provider: s.provider,
+          audioTracks: s.audioTracks || undefined,
         };
       });
 
@@ -84,16 +85,17 @@ export class CineproAggregator {
             // Best case: has both sources AND subtitles — resolve immediately
             resolved = true;
             resolve(res);
-            completions++;
           } else if (res.sources && res.sources.length > 0) {
-            // Has sources but no subtitles. Wait 800ms for a richer provider.
+            // Has sources but no subtitles. Wait a moment for a richer provider.
+            // NOTE: Do NOT call onDone() here — that would trigger an empty
+            // resolve if all other providers finished. The setTimeout is the
+            // sole resolution path for source-only results.
             setTimeout(() => {
               if (!resolved) {
                 resolved = true;
                 resolve(res);
               }
             }, 800);
-            onDone();
           } else {
             // Empty result — count as done
             onDone();

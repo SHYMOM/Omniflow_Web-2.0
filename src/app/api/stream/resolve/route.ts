@@ -19,7 +19,18 @@ interface SubtitleSource {
 interface StreamPayload {
   video_sources: StreamSource[];
   subtitle_sources: SubtitleSource[];
+  iframeUrl?: string;
+  allIframeUrls?: { name: string; url: string }[];
 }
+
+// Iframe embed providers (same order as SSE endpoint)
+const embedProviders = [
+  { name: 'vidsrc.xyz', buildMovieUrl: (tmdbId: string) => `https://vidsrc.xyz/embed/movie/${tmdbId}`, buildTvUrl: (tmdbId: string, season: number, episode: number) => `https://vidsrc.xyz/embed/tv/${tmdbId}/${season}/${episode}` },
+  { name: 'vidsrc.to', buildMovieUrl: (tmdbId: string) => `https://vidsrc.to/embed/movie/${tmdbId}`, buildTvUrl: (tmdbId: string, season: number, episode: number) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}` },
+  { name: 'embed.su', buildMovieUrl: (tmdbId: string) => `https://embed.su/embed/movie/${tmdbId}`, buildTvUrl: (tmdbId: string, season: number, episode: number) => `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}` },
+  { name: 'multiembed.mov', buildMovieUrl: (tmdbId: string) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`, buildTvUrl: (tmdbId: string, season: number, episode: number) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}` },
+  { name: 'vidsrc.cc', buildMovieUrl: (tmdbId: string) => `https://vidsrc.cc/v2/embed/movie/${tmdbId}`, buildTvUrl: (tmdbId: string, season: number, episode: number) => `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}` },
+];
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -122,11 +133,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // No direct streams found, return empty array (client will fallback to iframe)
-    return NextResponse.json<StreamPayload>({
+    // No direct streams found — fall back to iframe embeds
+    // First try to resolve a TMDB ID for non-TMDB IDs (e.g. anime)
+    let tmdbId: string | null = null;
+    if (id.startsWith('tmdb-movie-')) tmdbId = id.replace('tmdb-movie-', '');
+    else if (id.startsWith('tmdb-tv-')) tmdbId = id.replace('tmdb-tv-', '');
+    else {
+      try {
+        const { IdSyncService } = await import('@/lib/extraction/id-sync.service');
+        const resolved = await IdSyncService.resolveTmdbId(id);
+        tmdbId = resolved.tmdbId;
+      } catch {}
+    }
+
+    const embedId = tmdbId || imdbId || '';
+    const isTv = mediaType === 'tv' || mediaType === 'anime' || mediaType === 'kdrama';
+    const allIframeUrls = embedId ? embedProviders.map(p => ({
+      name: p.name,
+      url: isTv ? p.buildTvUrl(embedId, season, episode) : p.buildMovieUrl(embedId)
+    })) : [];
+
+    return NextResponse.json({
       video_sources: [],
-      subtitle_sources: []
-    }, { status: 404 });
+      subtitle_sources: [],
+      iframeUrl: allIframeUrls.length > 0 ? allIframeUrls[0].url : undefined,
+      allIframeUrls: allIframeUrls.length > 0 ? allIframeUrls : undefined,
+    }, { status: 200 });
 
   } catch (error: any) {
     console.error('[API /stream/resolve] Unhandled service error:', error?.message || error);

@@ -2,58 +2,101 @@ import { IStreamSource, IStreamSubtitle } from '@/types/extraction-types';
 
 interface EmbedProvider {
   name: string;
-  getMovieUrl: (imdbId: string) => string;
-  getTvUrl: (imdbId: string, season: number, episode: number) => string;
+  /** Which ID type this provider expects (default: 'tmdb') */
+  idType?: 'tmdb' | 'imdb';
+  getMovieUrl: (id: string) => string;
+  getTvUrl: (id: string, season: number, episode: number) => string;
+  // Whether this provider supports Firefox iframe embedding
+  firefoxCompatible?: boolean;
 }
 
 export class EmbedProviderAggregator {
   name = 'EmbedProviderAggregator';
 
+  // Firefox-compatible embed providers (no X-Frame-Options: SAMEORIGIN or CSP blocking)
+  // Order matters - first working one wins
   private providers: EmbedProvider[] = [
+    // VidSrc alternatives that work in Firefox — all use TMDB IDs
     {
-      name: 'vidsrc.cc',
-      getMovieUrl: (id) => `https://vidsrc.cc/v2/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`
+      name: 'vidsrc.xyz',
+      getMovieUrl: (id) => `https://vidsrc.xyz/embed/movie/${id}`,
+      getTvUrl: (id, s, e) => `https://vidsrc.xyz/embed/tv/${id}/${s}/${e}`,
+      firefoxCompatible: true
     },
     {
       name: 'vidsrc.to',
       getMovieUrl: (id) => `https://vidsrc.to/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+      getTvUrl: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+      firefoxCompatible: true
     },
     {
-      name: 'vidsrc.me',
-      getMovieUrl: (id) => `https://vidsrc.me/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://vidsrc.me/embed/tv/${id}/${s}/${e}`
+      name: 'vidsrc.in',
+      getMovieUrl: (id) => `https://vidsrc.in/embed/movie/${id}`,
+      getTvUrl: (id, s, e) => `https://vidsrc.in/embed/tv/${id}/${s}/${e}`,
+      firefoxCompatible: true
     },
+    // Embed.su - known to work in Firefox
     {
       name: 'embed.su',
       getMovieUrl: (id) => `https://embed.su/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`
+      getTvUrl: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`,
+      firefoxCompatible: true
     },
+    // Multiembed - works in Firefox
     {
       name: 'multiembed.mov',
       getMovieUrl: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-      getTvUrl: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
+      getTvUrl: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
+      firefoxCompatible: true
     },
+    // 2embed - alternative
     {
       name: '2embed.cc',
       getMovieUrl: (id) => `https://2embed.cc/embed/${id}`,
-      getTvUrl: (id, s, e) => `https://2embed.cc/embedtv/${id}&s=${s}&e=${e}`
+      getTvUrl: (id, s, e) => `https://2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
+      firefoxCompatible: true
     },
+    // Vidmoly
     {
       name: 'vidmoly.to',
       getMovieUrl: (id) => `https://vidmoly.to/embed/${id}`,
-      getTvUrl: (id, s, e) => `https://vidmoly.to/embed/${id}/${s}/${e}`
-    }
+      getTvUrl: (id, s, e) => `https://vidmoly.to/embed/${id}/${s}/${e}`,
+      firefoxCompatible: true
+    },
+    // Legacy vidsrc.cc (may be blocked in Firefox)
+    {
+      name: 'vidsrc.cc',
+      getMovieUrl: (id) => `https://vidsrc.cc/v2/embed/movie/${id}`,
+      getTvUrl: (id, s, e) => `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
+      firefoxCompatible: false
+    },
   ];
 
-  async scrapeMovie(imdbId: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const urls = this.providers.map(p => ({ name: p.name, url: p.getMovieUrl(imdbId) }));
+  /**
+   * Scrape movie sources from embed providers.
+   * @param tmdbId - Numeric TMDB ID (preferred, used by most embed providers)
+   * @param imdbId - IMDB ID with 'tt' prefix (fallback only)
+   */
+  async scrapeMovie(tmdbId?: string, imdbId?: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
+    const id = tmdbId || imdbId || '';
+    if (!id) return { sources: [], subtitles: [] };
+    const urls = this.providers.map(p => {
+      const pid = (p.idType === 'imdb' && imdbId) ? imdbId : (tmdbId || id);
+      return { name: p.name, url: p.getMovieUrl(pid), idType: p.idType };
+    });
     return this.scrapeUrls(urls);
   }
 
-  async scrapeSeries(imdbId: string, season: number, episode: number): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
-    const urls = this.providers.map(p => ({ name: p.name, url: p.getTvUrl(imdbId, season, episode) }));
+  /**
+   * Scrape TV series sources from embed providers.
+   */
+  async scrapeSeries(tmdbId?: string, season: number = 1, episode: number = 1, imdbId?: string): Promise<{ sources: IStreamSource[], subtitles: IStreamSubtitle[] }> {
+    const id = tmdbId || imdbId || '';
+    if (!id) return { sources: [], subtitles: [] };
+    const urls = this.providers.map(p => {
+      const pid = (p.idType === 'imdb' && imdbId) ? imdbId : (tmdbId || id);
+      return { name: p.name, url: p.getTvUrl(pid, season, episode), idType: p.idType };
+    });
     return this.scrapeUrls(urls);
   }
 

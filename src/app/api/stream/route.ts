@@ -88,32 +88,15 @@ function formatSubtitleUrls(subtitles: any[], request: NextRequest) {
 }
 
 /**
- * Resolve TMDB ID for anime via ARM API (server-side, no relative fetch)
+ * Resolve TMDB ID for anime — centralized via IdSyncService.
  */
 async function resolveAnimeTmdbId(id: string): Promise<string | null> {
   if (id.startsWith('tmdb-movie-') || id.startsWith('tmdb-tv-')) {
     return id.replace('tmdb-movie-', '').replace('tmdb-tv-', '');
   }
-  // For anime IDs, try the ARM API
-  const cleanId = id.replace('mal-', '').replace('anilist-', '').replace('jikan-', '');
-  const isMAL = id.includes('mal') || id.includes('jikan');
-  const source = isMAL ? 'myanimelist' : 'anilist';
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`https://arm.haglund.dev/api/v2/ids?source=${source}&id=${cleanId}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.themoviedb) return String(data.themoviedb);
-      }
-    } catch {
-      if (attempt === 0) await new Promise(r => setTimeout(r, 500));
-    }
-  }
-  return null;
+  const { IdSyncService } = await import('@/lib/extraction/id-sync.service');
+  const { tmdbId } = await IdSyncService.resolveTmdbId(id);
+  return tmdbId;
 }
 
 export async function GET(request: NextRequest) {
@@ -221,15 +204,38 @@ export async function GET(request: NextRequest) {
           }
 
           if (tmdbId) {
-            const iframeUrl = mediaType === 'movie'
-              ? `https://vidsrc.cc/v2/embed/movie/${tmdbId}`
-              : `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`;
+            // Use Firefox-compatible embed providers in priority order
+            const embedProviders = [
+              { name: 'vidsrc.xyz', baseUrl: 'https://vidsrc.xyz/embed' },
+              { name: 'vidsrc.to', baseUrl: 'https://vidsrc.to/embed' },
+              { name: 'embed.su', baseUrl: 'https://embed.su/embed' },
+              { name: 'multiembed.mov', baseUrl: 'https://multiembed.mov' },
+              { name: 'vidsrc.cc', baseUrl: 'https://vidsrc.cc/v2/embed' },
+            ];
+
+            const buildIframeUrl = (provider: typeof embedProviders[0]) => {
+              if (mediaType === 'movie') {
+                return `${provider.baseUrl}/movie/${tmdbId}`;
+              } else {
+                // multiembed uses different URL format
+                if (provider.name === 'multiembed.mov') {
+                  return `${provider.baseUrl}/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`;
+                }
+                return `${provider.baseUrl}/tv/${tmdbId}/${season}/${episode}`;
+              }
+            };
+
+            // Try each provider in order
+            let iframeUrl = buildIframeUrl(embedProviders[0]);
+            let selectedProvider = embedProviders[0].name;
+            const allIframeUrls = embedProviders.map(p => ({ name: p.name, url: buildIframeUrl(p) }));
 
             sendEvent('done', {
               success: true,
               source: 'iframe',
               iframeUrl,
-              provider: 'vidsrc',
+              provider: selectedProvider,
+              allIframeUrls,
             });
           } else {
             sendEvent('done', { success: false, source: 'direct' });

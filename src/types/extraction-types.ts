@@ -12,6 +12,7 @@ export interface IStreamSource {
   isM3U8: boolean;
   referer?: string;
   provider?: any;
+  audioTracks?: IAudioTrack[];
 }
 
 export interface IStreamSubtitle {

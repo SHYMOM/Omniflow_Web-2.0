@@ -5,6 +5,7 @@ import { expandQuery } from './query-expander';
 import { StealthHttpClient } from './stealth-client';
 import { PLAYWRIGHT_ENABLED } from './extraction-config';
 import { logger } from '../logger';
+import { SubtitleService } from './subtitle.service';
 
 const stealthClient = new StealthHttpClient();
 
@@ -160,6 +161,7 @@ export class UniversalAggregatorService {
     console.log(`[UniversalAggregator] Expected Media Duration: ${expectedDuration || 'unknown'} mins. Enforcing minimum duration gate: ${minDurationSec} seconds.`);
 
     // 3. Parallel Provider Blast Setup
+    const abortController = new AbortController();
     const allTasks: Promise<{ streams: UniversalStream[], subtitles: UniversalSubtitle[], provider: string }>[] = [];
     const topQueries = queries.slice(0, 2);
 
@@ -179,7 +181,7 @@ export class UniversalAggregatorService {
             episode,
             mediaType: 'anime',
             language: language || 'sub'
-          });
+          }, abortController.signal);
           if (coreAnime.success && coreAnime.sources) {
             coreAnime.sources.forEach((src: any) => {
               const lang = src.language || this.classifyLanguage(`${primaryTitle} ${src.quality}`);
@@ -209,6 +211,7 @@ export class UniversalAggregatorService {
       // Anime embed fallback via Cinepro (if TMDB ID is available from query expansion)
       if (tmdbId) {
         const animeCineproTask = (async () => {
+          if (abortController.signal.aborted) return { streams: [], subtitles: [], provider: 'anime-cinepro' };
           const streams: UniversalStream[] = [];
           const subtitles: UniversalSubtitle[] = [];
           try {
@@ -243,6 +246,7 @@ export class UniversalAggregatorService {
       // Movie/TV: Cinepro core
       if (tmdbId) {
         const coreMovieTask = (async () => {
+          if (abortController.signal.aborted) return { streams: [], subtitles: [], provider: 'cinepro' };
           const streams: UniversalStream[] = [];
           const subtitles: UniversalSubtitle[] = [];
           try {
@@ -278,9 +282,11 @@ export class UniversalAggregatorService {
       }
     }
 
-    // EMBED PROVIDER SCRAPER (runs via Playwright network interception for IMDB/TMDB IDs)
-    const scrapeTargetId = finalImdbId || tmdbId;
-    if (scrapeTargetId && (mediaType === 'movie' || mediaType === 'tv' || mediaType === 'anime') && PLAYWRIGHT_ENABLED) {
+    // EMBED PROVIDER SCRAPER (runs via Playwright network interception for TMDB/IMDB IDs)
+    // Only launch when we have a TMDB numeric ID (embed providers expect TMDB IDs for URL construction)
+    const hasTmdbNumericId = tmdbId && /^\d+$/.test(tmdbId);
+    const hasImdbId = Boolean(finalImdbId);
+    if ((hasTmdbNumericId || hasImdbId) && (mediaType === 'movie' || mediaType === 'tv' || mediaType === 'anime') && PLAYWRIGHT_ENABLED) {
       const embedTask = (async () => {
         const streams: UniversalStream[] = [];
         const subtitles: UniversalSubtitle[] = [];
@@ -288,8 +294,8 @@ export class UniversalAggregatorService {
           const { EmbedProviderAggregator } = await import('./embed-provider-aggregator');
           const embedAgg = new EmbedProviderAggregator();
           const result = mediaType === 'movie'
-            ? await embedAgg.scrapeMovie(scrapeTargetId)
-            : await embedAgg.scrapeSeries(scrapeTargetId, season, episode);
+            ? await embedAgg.scrapeMovie(hasTmdbNumericId ? tmdbId : undefined, finalImdbId || undefined)
+            : await embedAgg.scrapeSeries(hasTmdbNumericId ? tmdbId : undefined, season, episode, finalImdbId || undefined);
 
           if (result?.sources && result.sources.length > 0) {
             result.sources.forEach(src => {
@@ -427,8 +433,11 @@ export class UniversalAggregatorService {
     };
 
     // 4. Wait for the first success (hard timeout — don't keep users waiting)
-    const initialResults = await firstSuccess(allTasks, 8000);
-    
+    const initialResults = await firstSuccess(allTasks, 9000);
+
+    // Signal abort so remaining tasks can short-circuit
+    abortController.abort();
+
     // Extract what we found so far to return immediately
     const foundStreams: UniversalStream[] = [];
     const foundSubtitles: UniversalSubtitle[] = [];
@@ -440,11 +449,17 @@ export class UniversalAggregatorService {
     const deduplicatedStreams = this.deduplicateStreams(foundStreams);
     const deduplicatedSubtitles = this.deduplicateSubtitles(foundSubtitles);
 
-    // Trigger background cache filling and settling of all other tasks
-    Promise.allSettled(allTasks).then(async (results) => {
+    // Collect results from already-completed tasks (short 1s timeout).
+    (async () => {
+      const settled = await Promise.allSettled(
+        allTasks.map(t => Promise.race([
+          t,
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1000))
+        ]))
+      );
       const allStreams: UniversalStream[] = [];
       const allSubtitles: UniversalSubtitle[] = [];
-      results.forEach(res => {
+      settled.forEach(res => {
         if (res.status === 'fulfilled' && res.value) {
           allStreams.push(...res.value.streams);
           allSubtitles.push(...res.value.subtitles);
@@ -459,14 +474,21 @@ export class UniversalAggregatorService {
           validStreams.push(stream);
         }
       }
-      
+
       await this.saveCache(mediaId, season, episode, validStreams, allSubtitles);
-    }).catch(err => {
+    })().catch(err => {
       console.error('[UniversalAggregator] Background tasks error:', err);
     });
 
     const duration = Date.now() - startTime;
     console.log(`[UniversalAggregator] First-win resolved in ${duration}ms. Streams found: ${deduplicatedStreams.length}`);
+
+    // Enrich subtitles via SubtitleService (OpenSubtitles + SubDL) in background
+    // with a 2s timeout so it doesn't delay the response
+    if (deduplicatedStreams.length > 0) {
+      this.enrichSubtitles(deduplicatedSubtitles, finalImdbId, tmdbId, season, episode)
+        .catch(() => {});
+    }
 
     return {
       success: deduplicatedStreams.length > 0,
@@ -991,6 +1013,52 @@ export class UniversalAggregatorService {
       return { valid: true };
     } catch (err) {
       return { valid: false, reason: `Network error or block: ${(err as Error).message}` };
+    }
+  }
+
+  /**
+   * Enrich subtitles by querying OpenSubtitles + SubDL in background
+   * (2s timeout so it doesn't delay the response).
+   */
+  private async enrichSubtitles(
+    existingSubs: UniversalSubtitle[],
+    imdbId: string | undefined,
+    tmdbId: string | undefined,
+    season: number,
+    episode: number
+  ): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const additionalSubs = await SubtitleService.getSubtitles({
+        imdbId,
+        tmdbId: tmdbId || undefined,
+        season,
+        episode,
+        existingSubs: existingSubs.map(s => ({
+          lang: s.lang,
+          label: s.label,
+          url: s.url,
+        })),
+      });
+
+      clearTimeout(timeoutId);
+
+      // Merge additional subs (deduped by language, SubtitleService handles priority ordering)
+      const seenLangs = new Set(existingSubs.map(s => s.lang));
+      for (const sub of additionalSubs) {
+        if (!seenLangs.has(sub.lang)) {
+          seenLangs.add(sub.lang);
+          existingSubs.push({
+            lang: sub.lang,
+            label: sub.label,
+            url: sub.url,
+          });
+        }
+      }
+    } catch {
+      // Timeout or error — subtitles are best-effort
     }
   }
 }

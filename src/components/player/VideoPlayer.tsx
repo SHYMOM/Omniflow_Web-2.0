@@ -101,6 +101,8 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
   const [playbackReady, setPlaybackReady] = useState(false);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
+  const [iframeFallbackUrls, setIframeFallbackUrls] = useState<{ name: string; url: string }[]>([]);
+  const [currentIframeIndex, setCurrentIframeIndex] = useState(0);
   const [subtitles, setSubtitles] = useState<StreamSubtitle[]>([]);
   const [activeSubtitle, setActiveSubtitle] = useState<string>('none');
   const [backendLangs, setBackendLangs] = useState<string[]>(['sub']);
@@ -443,6 +445,11 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
                 if (active) {
                   if (data.success && data.source === 'iframe' && data.iframeUrl) {
                     setIframeUrl(data.iframeUrl);
+                    // Store fallback URLs if provided
+                    if (data.allIframeUrls && data.allIframeUrls.length > 0) {
+                      setIframeFallbackUrls(data.allIframeUrls);
+                      setCurrentIframeIndex(0);
+                    }
                     setStreamUrl(null);
                     setIsLoading(false);
                     setAdActive(false);
@@ -545,13 +552,13 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         hlsRetryCountRef.current = 0;
 
         const hls = new Hls({
-          maxMaxBufferLength: 15,
+          maxMaxBufferLength: 10,
           enableWorker: true,
           fragLoadPolicy: {
-            default: { maxTimeToFirstByteMs: 5000, maxLoadTimeMs: 10000, timeoutRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 }, errorRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 } }
+            default: { maxTimeToFirstByteMs: 3000, maxLoadTimeMs: 5000, timeoutRetry: { maxNumRetry: 0, retryDelayMs: 0, maxRetryDelayMs: 0 }, errorRetry: { maxNumRetry: 0, retryDelayMs: 0, maxRetryDelayMs: 0 } }
           },
           manifestLoadPolicy: {
-            default: { maxTimeToFirstByteMs: 5000, maxLoadTimeMs: 8000, timeoutRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 }, errorRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 } }
+            default: { maxTimeToFirstByteMs: 3000, maxLoadTimeMs: 5000, timeoutRetry: { maxNumRetry: 0, retryDelayMs: 0, maxRetryDelayMs: 0 }, errorRetry: { maxNumRetry: 0, retryDelayMs: 0, maxRetryDelayMs: 0 } }
           },
         });
         hls.loadSource(streamUrl);
@@ -1764,12 +1771,30 @@ export default function VideoPlayer({ malId, tmdbId, mediaType, episode, season,
         }}
       >
         {iframeUrl ? (
-          <iframe 
-            src={iframeUrl} 
-            className="w-full h-full border-0 absolute inset-0 z-30" 
-            allowFullScreen 
-            allow="autoplay; fullscreen"
-          />
+          <>
+            {iframeFallbackUrls.length > 1 && (
+              <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-black/80 backdrop-blur-sm border border-white/10 rounded-xl p-2">
+                <span className="text-xs text-zinc-400">Source:</span>
+                <select
+                  value={currentIframeIndex}
+                  onChange={(e) => setCurrentIframeIndex(Number(e.target.value))}
+                  className="bg-zinc-900 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-600 cursor-pointer appearance-none"
+                >
+                  {iframeFallbackUrls.map((provider, i) => (
+                    <option key={i} value={i}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <iframe
+              src={iframeFallbackUrls.length > 0 ? iframeFallbackUrls[currentIframeIndex].url : iframeUrl}
+              className="w-full h-full border-0 absolute inset-0 z-30"
+              allowFullScreen
+              allow="autoplay; fullscreen"
+            />
+          </>
         ) : (
           <>
             {subtitleSettings && (

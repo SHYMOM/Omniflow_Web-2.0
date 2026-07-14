@@ -18,6 +18,7 @@ import { StremioExtractor } from './stremio-extractor';
 import { HindiDubbedExtractor } from './hindidubbed-extractor';
 import { DesiDubAnimeExtractor } from './desidubanime-extractor';
 import { titleSimilarity } from './string-matching';
+import { IdSyncService } from './id-sync.service';
 
 export class AnimeExtractionService {
   private registry: ProviderRegistry;
@@ -50,16 +51,9 @@ export class AnimeExtractionService {
   async mapIds(mediaId: string): Promise<{ tmdbId: string | null; imdbId: string | null }> {
     const cleanId = mediaId.replace('anilist-', '').replace('mal-', '').replace('jikan-', '');
     const source = mediaId.includes('mal') || mediaId.includes('jikan') ? 'myanimelist' : 'anilist';
-    
+
     try {
-      // Use Anime Resource Mapper API with a very strict timeout (1500ms) to fail fast
-      const res = await this.stealthClient.get(`https://arm.haglund.dev/api/v2/ids?source=${source}&id=${cleanId}`, { timeout: 1500 });
-      if (res.data) {
-        return {
-          tmdbId: res.data.themoviedb ? String(res.data.themoviedb) : null,
-          imdbId: res.data.imdb || null
-        };
-      }
+      return await IdSyncService.resolveTmdbId(cleanId, source);
     } catch (e) {
       // Silently fail fast if the external mapper is down, we have native fallbacks
     }
@@ -68,7 +62,7 @@ export class AnimeExtractionService {
 
   // ─── Source Extraction & Caching ─────────────────────────────
 
-  async extractSources(ctx: ExtractionContext): Promise<IStreamResult> {
+  async extractSources(ctx: ExtractionContext, abortSignal?: AbortSignal): Promise<IStreamResult> {
     const title = ctx.title || await this.resolveTitle(ctx.mediaId);
     const episode = ctx.episode || 1;
     // Explicitly track if Hindi was requested for Gogoanime fallback routing
@@ -192,7 +186,7 @@ export class AnimeExtractionService {
       return true;
     });
 
-    const result = await this.registry.executeConcurrently(activeProviders);
+    const result = await this.registry.executeConcurrently(activeProviders, abortSignal);
 
     if (result.success && result.data) {
       // Set default available languages immediately to avoid blocking the client
